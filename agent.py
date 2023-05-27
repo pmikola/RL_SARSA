@@ -1,7 +1,9 @@
 import numpy as np
 import torch
 from torch import nn
-
+import torch
+from torchviz import make_dot
+import graphviz
 
 class Agent:
     def __init__(self, neuralNetwork, valueFunction):
@@ -11,17 +13,16 @@ class Agent:
 
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-08,
                                           weight_decay=0, amsgrad=False)
+
         self.Q_MAX = 0.
         self.loss = nn.MSELoss(reduction='sum')
 
     def train(self, Qval, s, a, r, sn, an, game):
         self.game = game
+        self.net.train()
 
-        Qval = Qval.clone().detach().requires_grad_(True).to(torch.float32)
-        with torch.no_grad():
-            Qval, preds, target = self.vF.Q_value(Qval, s, a, r, sn, an, game)
-        preds = preds.clone().detach().requires_grad_(True)
-        target = target.clone().detach().requires_grad_(True)
+        Qval = Qval.detach().requires_grad_(True).to(torch.float32)
+        Qval, preds, target = self.vF.Q_value(Qval, s, a, r, sn, an, game)
 
         self.l = self.loss(preds, target)
 
@@ -34,6 +35,7 @@ class Agent:
         state_b = self.net.state_dict().__str__()
 
         if state_a == state_b:
+            print(self.l)
             print("LAYERS WEIGHT SUM:", self.net.layers[0].weight.sum())
 
         if Qval.mean() > self.Q_MAX:
@@ -62,6 +64,10 @@ class Agent:
             is_random = 1
         else:
             self.actions = self.net(state.clone())
+            #dot = make_dot(self.actions, params=dict(self.net.named_parameters()))
+            #dot.render(directory='doctest-output', view=True)
+            # Display the graph (requires graphviz)
+            #dot.view()
         return self.actions.clone(), is_random
 
     def action2value(self, game, action, num_of_actions, lower_limit, higher_limit):
@@ -72,7 +78,7 @@ class Agent:
     def value2action(self, game, action_value, num_of_actions, lower_limit, higher_limit):
         action_space = torch.arange(lower_limit, higher_limit, (higher_limit - lower_limit) / num_of_actions)
         idx = game.agent.soft_argmin1d(torch.abs(action_space - action_value)).int()
-        action_space.fill_(0.)
+        action_space = torch.zeros_like(action_space)
         action_space[idx] = 1.
         return action_space
 
