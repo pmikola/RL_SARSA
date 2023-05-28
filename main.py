@@ -28,11 +28,20 @@ valueFunc = ValueFunction(alpha, epsilon, gamma,device)
 agent = Agent(net, valueFunc,device)
 game = Game(valueFunc, agent,device)
 cmap = plt.cm.get_cmap('hsv', 15)
-for i in range(0, 7):
+r_data = []
+l_data = []
+c_map_data = []
+for i in range(0, 10):
     rewards= game.playntrain(game, dataset)
     #game.net = net
     print("GAME CYCLE : ", i, "\n", "REWARDS TOTAL : ", sum(rewards))
-    plt.hist(rewards, alpha=0.5, stacked=False,histtype='bar', label=str(i), color=cmap(i))
+    r_data.append(rewards)
+    l_data.append("Epoch: "+str(i))
+    c_map_data.append(cmap(i))
+
+plt.hist(r_data, alpha=0.8, stacked=False,histtype='bar', label=l_data, color=c_map_data)
 
 plt.legend(prop={'size': 10})
+plt.xlabel("Reward value per game")
+plt.ylabel("No. of rewards")
 plt.show()

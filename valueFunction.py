@@ -26,7 +26,7 @@ class ValueFunction:
     #
     #     return Q_target, prediction
 
-    def Q_value(self, net, s, a, r, s_next, game_over):
+    def Q_value(self, net, s, a, r, s_next,a_next, game_over):
         prediction = net(s)
         target = prediction.clone()
 
@@ -37,7 +37,8 @@ class ValueFunction:
         for idx in range(len(game_over)):
             Q_new = r[idx]
             if not game_over[idx]:
-                Q_new = r[idx] + self.gamma * torch.max(Q_main[idx])
+                Q_new += self.gamma * Q_main[idx][torch.argmax(a_next[idx]).item()]
+
             action_idx = torch.argmax(a[idx]).item()
             Q_target[idx][action_idx] = Q_new
 

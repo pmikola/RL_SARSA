@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torchviz import make_dot
 
 MAX_MEMORY = 100_000
-BATCH_SIZE = 100
+BATCH_SIZE = 200
 
 
 class Agent:
@@ -26,38 +26,39 @@ class Agent:
 
         self.Q_MAX = 0.
         # self.loss = nn.CrossEntropyLoss(reduction='mean').to(self.device)
-        self.loss = nn.MSELoss(reduction='sum').to(self.device)
+        self.loss = nn.MSELoss(reduction='mean').to(self.device)
 
-    def remember(self, state, action, reward, next_state, done):
-        self.memory.append((state, action, reward, next_state, done))
+    def remember(self, state, action, reward, next_state, a_next, done):
+        self.memory.append((state, action, reward, next_state, a_next, done))
 
-    def train_short_memory(self, state, action, reward, next_state, done):
-        self.train_step(state, action, reward, next_state, done)
+    def train_short_memory(self, state, action, reward, next_state, a_next, done):
+        self.train_step(state, action, reward, next_state, a_next, done)
 
     def train_long_memory(self):
         if len(self.memory) > BATCH_SIZE:
             mini_sample = random.sample(self.memory, BATCH_SIZE)  # list of tuples
         else:
             mini_sample = self.memory
-        states, actions, rewards, next_states, dones = zip(*mini_sample)
-        self.train_step(states, actions, rewards, next_states, dones)
+        states, actions, rewards, next_states, next_actions, dones = zip(*mini_sample)
+        self.train_step(states, actions, rewards, next_states, next_actions, dones)
 
-    def train_step(self, s, a, r, s_next, game_over):
+    def train_step(self, s, a, r, s_next, a_next, game_over):
         if len(torch.stack(list(s), dim=0).shape) == 1:
             s = torch.unsqueeze(torch.tensor(s, dtype=torch.float), 0).to(self.device)
-            s_next = torch.unsqueeze(torch.tensor(s_next, dtype=torch.float),0).to(self.device)
+            s_next = torch.unsqueeze(torch.tensor(s_next, dtype=torch.float), 0).to(self.device)
             a = torch.unsqueeze(torch.tensor(a, dtype=torch.float), 0).to(self.device)
+            a_next = torch.unsqueeze(torch.tensor(a_next, dtype=torch.float), 0).to(self.device)
             r = torch.unsqueeze(torch.tensor(r, dtype=torch.float), 0).to(self.device)
             game_over = (game_over,)  # tuple with only one value
         else:
             s = torch.tensor(torch.stack(list(s), dim=0), dtype=torch.float).to(self.device)
             a = torch.tensor(torch.stack(list(a), dim=0), dtype=torch.float).to(self.device)
-            r = torch.tensor(torch.stack(list(torch.tensor(r, dtype=torch.float)), dim=0), dtype=torch.float).to(self.device)
+            r = torch.tensor(torch.stack(list(torch.tensor(r, dtype=torch.float)), dim=0), dtype=torch.float).to(
+                self.device)
             s_next = torch.tensor(torch.stack(list(s_next), dim=0), dtype=torch.float).to(self.device)
+            a_next = torch.tensor(torch.stack(list(a_next), dim=0), dtype=torch.float).to(self.device)
 
-
-
-        target, prediction = self.vF.Q_value(self.net, s, a, r, s_next, game_over)
+        target, prediction = self.vF.Q_value(self.net, s, a, r, s_next, a_next, game_over)
         # state_a = self.net.state_dict().__str__()
 
         self.optimizer.zero_grad()
@@ -68,17 +69,18 @@ class Agent:
 
         # if state_a != state_b:
         #    print("LAYERS WEIGHT SUM:", self.net.layers[0].weight.sum())
-    def take_action(self,s,step_counter,total_counter,dataset,game):
+
+    def take_action(self, s, step_counter, total_counter, dataset, game):
         _, _, body_part = dataset.decode_input(s)
-        actions, is_random_next = self.chooseAction(s, dataset,total_counter)
+        actions, is_random_next = self.chooseAction(s, dataset, total_counter)
         if is_random_next == 1:
             action = self.actions[step_counter][body_part]
             a = game.agent.value2action(action, self.net.no_of_heads,
-                                             game.lower_limit, game.upper_limit)
+                                        game.lower_limit, game.upper_limit)
         else:
             a = self.actions
-        a_value = game.agent.action2value(a, self.net.no_of_heads,game.lower_limit, game.upper_limit)
-        return a,a_value,body_part
+        a_value = game.agent.action2value(a, self.net.no_of_heads, game.lower_limit, game.upper_limit)
+        return a, a_value, body_part
 
     def get_state(self, step_counter, dataset):
         turn = self.int2binary(step_counter)
@@ -110,9 +112,9 @@ class Agent:
         result = torch.sum((n - 1) * input * indices, dim=-1)
         return result
 
-    def chooseAction(self, state, dataset,total_counter):
+    def chooseAction(self, state, dataset, total_counter):
         is_random = 0
-        if np.random.uniform(0, 1) < self.vF.epsilon*total_counter:  # random action
+        if np.random.uniform(0, 1) < self.vF.epsilon * total_counter:  # random action
             self.actions, _, _ = dataset.create_target(100)  # For kj_total_var single regression output
             is_random = 1
         else:

@@ -38,11 +38,14 @@ class Game:
                                                      self.std)
 
                 self.s_next, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
+                self.a_next, _, _ = self.agent.take_action(self.s_next, step_counter, total_counter, dataset,
+                                                                         game)
+
                 # train short memory
-                self.agent.train_short_memory(self.s, self.a, self.reward, self.s_next, self.game_over)
+                self.agent.train_short_memory(self.s, self.a, self.reward, self.s_next,self.a_next, self.game_over)
 
                 # remember
-                self.agent.remember(self.s, self.a, self.reward, self.s_next, self.game_over)
+                self.agent.remember(self.s, self.a, self.reward, self.s_next,self.a_next, self.game_over)
 
                 step_counter += 1
                 total_counter+=1
