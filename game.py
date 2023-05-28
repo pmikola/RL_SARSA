@@ -22,9 +22,10 @@ class Game:
     def reset(self, dataset):
         pass
 
-    def playntrain(self, game, dataset, rounds=200):
+    def playntrain(self, game, dataset, rounds=100):
         self.game = game
         self.agent.net.train()
+
         self.dataset = dataset
         rewards = []
         total_counter = 0

@@ -34,6 +34,7 @@ class ValueFunction:
         Q_main = net(s_next).detach()
         Q_target = target.clone()
 
+
         for idx in range(len(game_over)):
             Q_new = r[idx]
             if not game_over[idx]:
