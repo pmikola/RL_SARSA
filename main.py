@@ -17,17 +17,20 @@ no_of_states = 13
 alpha = 0.5
 epsilon = 0.2
 gamma = 0.95
-dataset = DataSet()
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+dataset = DataSet(device)
 
 net = NeuralNetwork(no_of_actions, no_of_states)
-net.requires_grad_(True)
-valueFunc = ValueFunction(alpha, epsilon, gamma)
-agent = Agent(net, valueFunc)
-game = Game(valueFunc, agent)
+net.to(device).requires_grad_(True)
+valueFunc = ValueFunction(alpha, epsilon, gamma,device)
+agent = Agent(net, valueFunc,device)
+game = Game(valueFunc, agent,device)
 cmap = plt.cm.get_cmap('hsv', 10)
 for i in range(0, 5):
-    rewards, net = game.playntrain(game, dataset)
-    game.net = net
+    rewards= game.playntrain(game, dataset)
+    #game.net = net
     print("GAME CYCLE : ", i, "\n", "REWARDS TOTAL : ", sum(rewards))
     plt.hist(rewards, alpha=0.5, stacked=True, label=str(i), color=cmap(i))
 

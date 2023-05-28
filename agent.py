@@ -1,42 +1,46 @@
 import numpy as np
 import torch
 from torch import nn
-import torch
-from torchviz import make_dot
-import graphviz
+
+import torch.nn.functional as F
 
 class Agent:
-    def __init__(self, neuralNetwork, valueFunction):
+    def __init__(self, neuralNetwork, valueFunction,device):
         self.net = neuralNetwork
         print(self.net)
         self.vF = valueFunction
 
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-08,
-                                          weight_decay=0, amsgrad=False)
+        self.device = device
+
+        self.optimizer = torch.optim.SGD(self.net.parameters(), lr=0.1)
+        # self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.1, betas=(0.9, 0.999), eps=1e-08,
+        #                                   weight_decay=0, amsgrad=False)
 
         self.Q_MAX = 0.
-        self.loss = nn.MSELoss(reduction='sum')
+        self.loss = nn.MSELoss(reduction='sum').to(self.device)
 
     def train(self, Qval, s, a, r, sn, an, game):
         self.game = game
-        self.net.train()
+        # self.net.train()
 
-        Qval = Qval.detach().requires_grad_(True).to(torch.float32)
+        #Qval.requires_grad_(True).to(torch.float32).to(self.device)
         Qval, preds, target = self.vF.Q_value(Qval, s, a, r, sn, an, game)
-
+        preds = preds.to(self.device)
+        target = target.to(self.device)
+        # self.l = F.smooth_l1_loss(preds, target)
         self.l = self.loss(preds, target)
 
         state_a = self.net.state_dict().__str__()
 
         self.optimizer.zero_grad()
-        self.l.backward(retain_graph=True)
+        self.l.backward()
         self.optimizer.step()
 
         state_b = self.net.state_dict().__str__()
 
         if state_a == state_b:
             print(self.l)
-            print("LAYERS WEIGHT SUM:", self.net.layers[0].weight.sum())
+            print("LAYERS WEIGHT SUM:", list(self.net.parameters())[0].clone().detach().numpy().sum())
 
         if Qval.mean() > self.Q_MAX:
             self.Q_MAX = Qval.mean()
@@ -44,8 +48,9 @@ class Agent:
 
     def soft_argmax1d(self, input, beta=100):
         *_, n = input.shape
-        input = torch.softmax(beta * input, dim=-1)
-        indices = torch.linspace(0, 1, n)
+        softmax = nn.Softmax(dim=-1)
+        input = softmax(beta * input)
+        indices = torch.linspace(0, 1, n, device=self.device)
         result = torch.sum((n - 1) * input * indices, dim=-1)
         return result
 
@@ -53,7 +58,7 @@ class Agent:
         *_, n = input.shape
         softmin = nn.Softmin(dim=-1)
         input = softmin(beta * input)
-        indices = torch.linspace(0, 1, n)
+        indices = torch.linspace(0, 1, n, device=self.device)
         result = torch.sum((n - 1) * input * indices, dim=-1)
         return result
 
@@ -63,11 +68,9 @@ class Agent:
             self.actions, _, _ = dataset.create_target(50)  # For kj_total_var single regression output
             is_random = 1
         else:
+            state = state.to(self.device)
+
             self.actions = self.net(state.clone())
-            #dot = make_dot(self.actions, params=dict(self.net.named_parameters()))
-            #dot.render(directory='doctest-output', view=True)
-            # Display the graph (requires graphviz)
-            #dot.view()
         return self.actions.clone(), is_random
 
     def action2value(self, game, action, num_of_actions, lower_limit, higher_limit):

@@ -5,13 +5,14 @@ from torch import nn
 
 
 class Game:
-    def __init__(self, valueFunction, agent):
+    def __init__(self, valueFunction, agent,device):
         self.reward = 0.
         self.laser_params = None
         self.patient = None
         self.game = None
         self.valueFunction = valueFunction
         self.agent = agent
+        self.device = device
         self.dataset = None
         self.std = 15
         self.lower_limit = 0.
@@ -19,10 +20,10 @@ class Game:
 
     def init(self, no_of_heads, no_of_states, all_moves, dataset):
         # torch.manual_seed(42)
-        self.action = torch.zeros((all_moves, no_of_heads), requires_grad=True)
-        self.a = torch.zeros((all_moves, no_of_heads), requires_grad=True)
-        self.state = torch.zeros((all_moves, no_of_states), requires_grad=True)
-        self.Q = torch.zeros((all_moves, no_of_states, no_of_heads), requires_grad=True)
+        self.action = torch.zeros((all_moves, no_of_heads), requires_grad=True).to(self.device)
+        self.a = torch.zeros((all_moves, no_of_heads), requires_grad=True).to(self.device)
+        self.state = torch.zeros((all_moves, no_of_states), requires_grad=True).to(self.device)
+        self.Q = torch.zeros((all_moves, no_of_states, no_of_heads), requires_grad=True).to(self.device)
 
         step_counter = 0
         for i in range(all_moves):
@@ -49,6 +50,7 @@ class Game:
 
     def playntrain(self, game, dataset, rounds=200, num_of_treatments=9):
         self.game = game
+        self.agent.net.train()
         self.dataset = dataset
         self.game.init(game.agent.net.no_of_heads, game.agent.net.no_of_states, rounds * num_of_treatments, dataset)
         rewards = []
@@ -87,6 +89,7 @@ class Game:
                     self.a[n + 1].requires_grad_(True)
                     # self.a[n + 1] = self.actions
 
+
                 Q_next = game.agent.train(self.Q[n], self.state[n], self.a[n], self.reward,
                                           self.state[n + 1], self.a[n + 1], self.game)
 
@@ -100,4 +103,4 @@ class Game:
                     rewards.append(self.reward)
                     self.reward = 0.
                     break
-        return rewards, self.agent.net
+        return rewards
