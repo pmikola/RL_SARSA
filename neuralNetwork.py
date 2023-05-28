@@ -11,9 +11,11 @@ class NeuralNetwork(nn.Module):
         self.no_of_heads = no_of_heads
         self.no_of_states = no_of_states
         self.layers = nn.Sequential(
-            nn.Linear(self.no_of_states, 512, bias=False),
-            nn.ReLU(inplace=False),
-            nn.Linear(512, self.no_of_heads, bias=False)
+            nn.Linear(self.no_of_states, 128, bias=True),
+            nn.Tanh(),
+            nn.Linear(128, 128, bias=True),
+            nn.ReLU(inplace=True),
+            nn.Linear(128, self.no_of_heads, bias=False)
         )
         for param in self.parameters():
             param.requires_grad = True
