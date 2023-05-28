@@ -22,17 +22,18 @@ class Game:
     def reset(self, dataset):
         pass
 
-    def playntrain(self, game, dataset, rounds=100):
+    def playntrain(self, game, dataset, rounds=200):
         self.game = game
         self.agent.net.train()
         self.dataset = dataset
         rewards = []
+        total_counter = 0
         step_counter = 0
         for k in range(rounds):
             while True:
                 self.s, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
 
-                self.a,self.a_value,body_part = self.agent.take_action( self.s, step_counter, dataset, game)
+                self.a,self.a_value,body_part = self.agent.take_action( self.s, step_counter,total_counter, dataset, game)
                 self.reward = self.agent.checkReward(self.reward, body_part, self.a_value, self.dataset, step_counter,
                                                      self.std)
 
@@ -44,6 +45,7 @@ class Game:
                 self.agent.remember(self.s, self.a, self.reward, self.s_next, self.game_over)
 
                 step_counter += 1
+                total_counter+=1
                 #self.reward += 1
                 #steps_total += 1
                 if step_counter>=9:

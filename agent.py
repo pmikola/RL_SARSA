@@ -26,7 +26,7 @@ class Agent:
 
         self.Q_MAX = 0.
         # self.loss = nn.CrossEntropyLoss(reduction='mean').to(self.device)
-        self.loss = nn.MSELoss(reduction='mean').to(self.device)
+        self.loss = nn.MSELoss(reduction='sum').to(self.device)
 
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
@@ -68,9 +68,9 @@ class Agent:
 
         # if state_a != state_b:
         #    print("LAYERS WEIGHT SUM:", self.net.layers[0].weight.sum())
-    def take_action(self,s,step_counter,dataset,game):
+    def take_action(self,s,step_counter,total_counter,dataset,game):
         _, _, body_part = dataset.decode_input(s)
-        actions, is_random_next = self.chooseAction(s, dataset)
+        actions, is_random_next = self.chooseAction(s, dataset,total_counter)
         if is_random_next == 1:
             action = self.actions[step_counter][body_part]
             a = game.agent.value2action(action, self.net.no_of_heads,
@@ -110,13 +110,13 @@ class Agent:
         result = torch.sum((n - 1) * input * indices, dim=-1)
         return result
 
-    def chooseAction(self, state, dataset):
+    def chooseAction(self, state, dataset,total_counter):
         is_random = 0
-        if np.random.uniform(0, 1) < self.vF.epsilon:  # random action
-            self.actions, _, _ = dataset.create_target(50)  # For kj_total_var single regression output
+        if np.random.uniform(0, 1) < self.vF.epsilon*total_counter:  # random action
+            self.actions, _, _ = dataset.create_target(100)  # For kj_total_var single regression output
             is_random = 1
         else:
-            self.actions = state.to(self.device)
+            state = state.to(self.device)
             # dot = make_dot(self.actions, params=dict(self.net.named_parameters()))
             # dot.render(directory='doctest-output', view=True)
             self.actions = self.net(state.clone())
@@ -141,7 +141,7 @@ class Agent:
         if ref_value_min < action < ref_value_max:
             reward += 1
         else:
-            pass
+            reward -= 1
         return reward
 
     def int2binary(self, step_counter):
