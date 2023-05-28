@@ -26,7 +26,7 @@ class Agent:
 
         self.Q_MAX = 0.
         # self.loss = nn.CrossEntropyLoss(reduction='mean').to(self.device)
-        self.loss = nn.MSELoss(reduction='mean').to(self.device)
+        self.loss = nn.MSELoss(reduction='sum').to(self.device)
 
     def remember(self, state, action, reward, next_state, a_next, done):
         self.memory.append((state, action, reward, next_state, a_next, done))

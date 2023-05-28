@@ -1,4 +1,7 @@
 # SARSA(on-policy TD-LAMBDA) FOR AUTOMATIC LASER PARAMETERS SETTING
+import random
+
+import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from torch import optim
@@ -12,7 +15,7 @@ from neuralNetwork import NeuralNetwork
 # device = 'cuda' if torch.cuda.is_available() else 'cpu'
 # x = dataSet.decode_input(dataSet.create_input_set())
 # y = dataSet.create_target(15)
-no_of_actions = 64
+no_of_actions = 128
 no_of_states = 14
 alpha = 0.1
 epsilon = 0.0001
@@ -21,7 +24,9 @@ gamma = 0.99
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 dataset = DataSet(device)
-
+torch.manual_seed(2023)
+random.seed(0)
+np.random.seed(0)
 net = NeuralNetwork(no_of_actions, no_of_states)
 net.to(device).requires_grad_(True)
 valueFunc = ValueFunction(alpha, epsilon, gamma,device)
