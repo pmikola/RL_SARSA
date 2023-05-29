@@ -61,3 +61,7 @@ class ValueFunction:
         Q_target /= Q_target.sum(dim=1, keepdim=True)
         loss = -torch.sum(Q_target * torch.log(Q + 1e-8)) / batch_size
         return loss
+
+    def get_priority(self, target, prediction):
+        abs_td_errors = torch.abs(target - prediction)
+        return abs_td_errors.squeeze().tolist()

@@ -24,6 +24,7 @@ class Game:
         self.games = None
 
 
+
     def reset(self, dataset):
         pass
 
@@ -60,7 +61,7 @@ class Game:
                 self.total_counter += 1
                 # self.reward += 1
                 # steps_total += 1
-                if step_counter >= 9:
+                if step_counter >= self.number_of_treatments:
                     step_counter = 0
                     self.agent.train_long_memory()
                     rewards.append(self.reward)

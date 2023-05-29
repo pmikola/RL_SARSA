@@ -21,6 +21,7 @@ class Agent:
         print(self.net2)
         self.BATCH_SIZE = 200
         self.MAX_MEMORY = 100_000
+        self.MAX_PRIORITY = torch.tensor(1.)
         self.vF = valueFunction
         self.memory = deque(maxlen=self.MAX_MEMORY)  # popleft()
         self.device = device
@@ -38,17 +39,35 @@ class Agent:
         # self.loss2 = nn.MSELoss(reduction='sum').to(self.device)
 
     def remember(self, state, action, reward, next_state, a_next, done):
-        self.memory.append((state, action, reward, next_state, a_next, done))
+        self.memory.append((state, action, reward, next_state, a_next, done,self.MAX_PRIORITY))
 
     def train_short_memory(self, state, action, reward, next_state, a_next, done):
-        self.train_step(state, action, reward, next_state, a_next, done)
+        if len(self.memory) > 0:
+            self.train_step(state, action, reward, next_state, a_next, done)
 
     def train_long_memory(self):
         if len(self.memory) > self.BATCH_SIZE:
-            mini_sample = random.sample(self.memory, self.BATCH_SIZE)  # list of tuples
+            priorities = []
+            for exp in self.memory:
+                if isinstance(exp[-1], torch.Tensor) and exp[-1].numel() > 1:
+                    priorities.extend(exp[-1].cpu().numpy())
+                else:
+                    priorities.append(exp[-1])
+            priorities_tensor = torch.tensor(priorities, dtype=torch.float).to(self.device)
+            priorities_sum = torch.sum(priorities_tensor)
+            probabilities = priorities_tensor / priorities_sum
+            probabilities /= probabilities.sum()  # Normalize probabilities
+            num_samples = min(self.BATCH_SIZE, len(self.memory))
+            valid_indices = range(len(self.memory))
+            mini_sample_indices = np.random.choice(valid_indices, num_samples, replace=True)
+            mini_sample = [self.memory[i] for i in mini_sample_indices]
         else:
             mini_sample = self.memory
-        states, actions, rewards, next_states, next_actions, dones = zip(*mini_sample)
+
+        if not mini_sample:
+            print("EMPTY")
+            return
+        states, actions, rewards, next_states, next_actions, dones, priorities = zip(*mini_sample)
         self.train_step(states, actions, rewards, next_states, next_actions, dones)
 
     def train_step(self, s, a, r, s_next, a_next, game_over):
@@ -75,6 +94,13 @@ class Agent:
         ldp = self.vF.distributional_projection(r, target,prediction)
         l = 0.5*lMSE+ldp
         l.backward()
+        # Update priorities
+        abs_td_errors = torch.abs(target - prediction).detach()
+        priorities = abs_td_errors + 1e-6  # Add small constant to avoid zero priority
+
+        for i, priority in enumerate(priorities):
+            self.memory[i] = (*self.memory[i][:-1], priority)
+
         self.optimizer.step()
         # state_b = self.net.state_dict().__str__()
         # self.optimizer2.zero_grad()
@@ -133,7 +159,7 @@ class Agent:
     def chooseAction(self, state, dataset,game):
         is_random = 0
         hair_type, skin_type, _ = dataset.decode_input(state)
-        if np.random.uniform(0., 1.) < self.vF.epsilon * (game.game_cycles*game.number_of_treatments*game.rounds/2)/(game.total_counter+1):   # random action
+        if np.random.uniform(0., 1.) < self.vF.epsilon * (game.game_cycles*game.number_of_treatments*game.games/2)/(game.total_counter+1):   # random action
             self.actions, _, _ = dataset.create_target(200)  # For kj_total_var single regression output
             is_random = 1
         else:
