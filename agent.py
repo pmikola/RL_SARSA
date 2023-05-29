@@ -13,8 +13,9 @@ BATCH_SIZE = 200
 
 
 class Agent:
-    def __init__(self, neuralNetwork, valueFunction, device):
+    def __init__(self, neuralNetwork,neuralNetwork2, valueFunction, device):
         self.net = neuralNetwork
+        self.net2 = neuralNetwork2
         print(self.net)
         self.vF = valueFunction
         self.memory = deque(maxlen=MAX_MEMORY)  # popleft()
@@ -23,10 +24,13 @@ class Agent:
         # self.optimizer = torch.optim.SGD(self.net.parameters(), lr=0.001)
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.0005, betas=(0.9, 0.999), eps=1e-08,
                                           weight_decay=0, amsgrad=False)
+        self.optimizer2 = torch.optim.Adam(self.net.parameters(), lr=0.0005, betas=(0.9, 0.999), eps=1e-08,
+                                          weight_decay=0, amsgrad=False)
 
         self.Q_MAX = 0.
         # self.loss = nn.CrossEntropyLoss(reduction='mean').to(self.device)
         self.loss = nn.MSELoss(reduction='sum').to(self.device)
+        self.loss2 = nn.MSELoss(reduction='sum').to(self.device)
 
     def remember(self, state, action, reward, next_state, a_next, done):
         self.memory.append((state, action, reward, next_state, a_next, done))
@@ -58,14 +62,20 @@ class Agent:
             s_next = torch.tensor(torch.stack(list(s_next), dim=0), dtype=torch.float).to(self.device)
             a_next = torch.tensor(torch.stack(list(a_next), dim=0), dtype=torch.float).to(self.device)
 
-        target, prediction = self.vF.Q_value(self.net, s, a, r, s_next, a_next, game_over)
+        target, prediction = self.vF.Q_value(self.net,self.net2, s, a, r, s_next, a_next, game_over)
         # state_a = self.net.state_dict().__str__()
 
         self.optimizer.zero_grad()
         loss = self.loss(target, prediction)
-        loss.backward()
+        loss.backward(retain_graph=True)
         self.optimizer.step()
         # state_b = self.net.state_dict().__str__()
+        self.optimizer2.zero_grad()
+        loss2 = self.loss(target, self.net2(s_next).detach())
+        loss2.backward(retain_graph=True)
+        self.optimizer2.step()
+
+        self.vF.soft_update(self.net, self.net2)
 
         # if state_a != state_b:
         #    print("LAYERS WEIGHT SUM:", self.net.layers[0].weight.sum())
@@ -114,6 +124,7 @@ class Agent:
 
     def chooseAction(self, state, dataset, total_counter):
         is_random = 0
+        hair_type, skin_type, _ = dataset.decode_input(state)
         if np.random.uniform(0, 1) < self.vF.epsilon * total_counter:  # random action
             self.actions, _, _ = dataset.create_target(100)  # For kj_total_var single regression output
             is_random = 1
@@ -130,7 +141,8 @@ class Agent:
         return action_space[max_value_ind]
 
     def value2action(self, action_value, num_of_actions, lower_limit, higher_limit):
-        action_space = torch.arange(lower_limit, higher_limit, (higher_limit - lower_limit) / num_of_actions).to(self.device)
+        action_space = torch.arange(lower_limit, higher_limit, (higher_limit - lower_limit) / num_of_actions).to(
+            self.device)
         idx = torch.argmin(torch.abs(action_space - action_value)).int()
         action_space = torch.zeros_like(action_space).to(self.device)
         action_space[idx] = 1.

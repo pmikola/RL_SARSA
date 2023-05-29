@@ -17,9 +17,10 @@ from neuralNetwork import NeuralNetwork
 # y = dataSet.create_target(15)
 no_of_actions = 128
 no_of_states = 14
-alpha = 0.1
+alpha = 0.3
 epsilon = 0.0001
-gamma = 0.99
+gamma = 0.95
+tau = 0.001
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -28,9 +29,11 @@ torch.manual_seed(2023)
 random.seed(2023)
 np.random.seed(2023)
 net = NeuralNetwork(no_of_actions, no_of_states)
+net2 = NeuralNetwork(no_of_actions, no_of_states)
 net.to(device).requires_grad_(True)
-valueFunc = ValueFunction(alpha, epsilon, gamma, device)
-agent = Agent(net, valueFunc, device)
+net2.to(device).requires_grad_(True)
+valueFunc = ValueFunction(alpha, epsilon, gamma,tau, device)
+agent = Agent(net,net2, valueFunc, device)
 game = Game(valueFunc, agent, device)
 cmap = plt.cm.get_cmap('hsv', 15)
 r_data = []
