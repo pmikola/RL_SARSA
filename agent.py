@@ -83,13 +83,13 @@ class Agent:
         return a, a_value, body_part
 
     def get_state(self, step_counter, dataset):
-        turn = self.int2binary(step_counter)
-        patient = dataset.create_input_set()
+        turn = self.int2binary(step_counter).to(self.device)
+        patient = dataset.create_input_set().to(self.device)
         if step_counter >= 9:
-            done = torch.tensor([1.])
+            done = torch.tensor([1.]).to(self.device)
             game_over = True
         else:
-            done = torch.tensor([0.])
+            done = torch.tensor([0.]).to(self.device)
             game_over = False
 
         s = torch.cat((patient, turn, done), axis=0)
@@ -130,9 +130,9 @@ class Agent:
         return action_space[max_value_ind]
 
     def value2action(self, action_value, num_of_actions, lower_limit, higher_limit):
-        action_space = torch.arange(lower_limit, higher_limit, (higher_limit - lower_limit) / num_of_actions)
+        action_space = torch.arange(lower_limit, higher_limit, (higher_limit - lower_limit) / num_of_actions).to(self.device)
         idx = torch.argmin(torch.abs(action_space - action_value)).int()
-        action_space = torch.zeros_like(action_space)
+        action_space = torch.zeros_like(action_space).to(self.device)
         action_space[idx] = 1.
         return action_space
 
