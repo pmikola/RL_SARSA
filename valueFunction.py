@@ -2,32 +2,32 @@ import torch
 
 
 class ValueFunction:
-    def __init__(self, alpha, epsilon, gamma,tau, device):
+    def __init__(self, alpha, epsilon, gamma, tau, device):
         self.alpha = alpha
         self.epsilon = epsilon
         self.gamma = gamma
-        self.tau = tau
         self.device = device
+        self.tau = tau
 
-    def Q_value(self, net, target_net, s, a, r, s_next, a_next, game_over):
-        prediction = net(s)
-        target = prediction.clone()
-
-        # Q_main = net(s_next).detach()
-        Q_target = target.clone()
+    def Q_value(self, net, net2, s, a, r, s_next, a_next, game_over):
+        Q = net(s)
+        # Calculate Q-values using the main network
+        Q_main = net(s_next).detach()
+        Q_target = Q.clone()
 
         for idx in range(len(game_over)):
             Q_new = r[idx]
 
             if not game_over[idx]:
+                # Indexing Q-main using max value position from next action give us SARS(A)
+
                 next_action_idx = torch.argmax(a_next[idx]).item()
-                Q_next = target_net(s_next).detach()
-                Q_new += self.gamma * Q_next[idx][next_action_idx]
+                Q_new +=  self.alpha*(r[idx] + self.gamma * Q_main[idx][next_action_idx] )
 
             current_action_idx = torch.argmax(a[idx]).item()
             Q_target[idx][current_action_idx] = Q_new
 
-        return Q_target, prediction
+        return Q_target, Q
 
     def soft_update(self, net, target_net):
         for target_param, param in zip(target_net.parameters(), net.parameters()):
