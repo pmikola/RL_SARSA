@@ -21,7 +21,8 @@ alpha = 0.001
 epsilon = 0.1
 gamma = 0.99
 tau = 0.01
-
+no_of_games = 100
+no_of_rounds = 9
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 dataset = DataSet(device)
@@ -32,10 +33,12 @@ net = NeuralNetwork(no_of_actions, no_of_states)
 net2 = NeuralNetwork(no_of_actions, no_of_states)
 net.to(device).requires_grad_(True)
 net2.to(device).requires_grad_(True)
-valueFunc = ValueFunction(alpha, epsilon, gamma, tau, device)
+valueFunc = ValueFunction(alpha, epsilon, gamma, tau, device, no_of_actions, v_min=-no_of_games * no_of_rounds,
+                          v_max=no_of_games * no_of_rounds)
 agent = Agent(net, net2, valueFunc, device)
 game = Game(valueFunc, agent, device)
 game.game_cycles = 10
+game.games = no_of_games
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
 r_data = []
 l_data = []
@@ -51,11 +54,10 @@ for i in range(0, game.game_cycles):
     c_map_data.append(cmap(i))
 
 plt.hist(r_data, alpha=0.8, stacked=False, histtype='bar', label=l_data, color=c_map_data)
+#
+plt.legend(prop={'size': 6}, loc='upper center', bbox_to_anchor=(0.5, 1.08),
+           ncol=5, fancybox=True, shadow=True)
 
-plt.legend(prop={'size': 10}, loc='upper center', bbox_to_anchor=(0.5, 1.05),
-           ncol=3, fancybox=True, shadow=True)
-# plt.legend(prop={'size': 10}, loc='upper center', bbox_to_anchor=(0.5, -0.05),
-#           fancybox=True, shadow=True, ncol=5)
 plt.xlabel("Reward value per game")
 plt.ylabel("No. of rewards")
 plt.grid()

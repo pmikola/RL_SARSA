@@ -21,21 +21,23 @@ class Game:
         self.total_counter = 0.
         self.number_of_treatments = 9
         self.game_cycles = None
+        self.games = None
+
 
     def reset(self, dataset):
         pass
 
-    def playntrain(self, game, dataset, rounds=100):
+    def playntrain(self, game, dataset, games=100):
         self.game = game
         self.game.agent.no_of_guesses = 0.
         self.agent.net.train()
-        self.rounds = rounds
+        self.games = games
         #self.agent.net2.train()
         self.dataset = dataset
         rewards = []
         #self.total_counter = 0.
         step_counter = 0
-        for k in range(rounds):
+        for k in range(games):
             while True:
                 self.s, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
 

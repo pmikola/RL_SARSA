@@ -1,4 +1,5 @@
 import random
+import time
 from collections import deque
 
 import numpy as np
@@ -70,7 +71,9 @@ class Agent:
         # state_a = self.net.state_dict().__str__()
 
         self.optimizer.zero_grad()
-        l = self.loss(target, prediction)
+        lMSE = self.loss(target, prediction)
+        ldp = self.vF.distributional_projection(r, target,prediction)
+        l = 0.5*lMSE+ldp
         l.backward()
         self.optimizer.step()
         # state_b = self.net.state_dict().__str__()
