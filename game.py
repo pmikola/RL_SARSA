@@ -22,6 +22,7 @@ class Game:
         self.number_of_treatments = 9
         self.game_cycles = None
         self.games = None
+        self.cycle = None
 
 
 

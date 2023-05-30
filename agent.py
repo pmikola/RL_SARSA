@@ -10,8 +10,6 @@ import torch.nn.functional as F
 from torchviz import make_dot
 
 
-
-
 class Agent:
     def __init__(self, neuralNetwork, neuralNetwork2, valueFunction, device):
         self.net = neuralNetwork
@@ -25,7 +23,8 @@ class Agent:
         self.vF = valueFunction
         self.memory = deque(maxlen=self.MAX_MEMORY)  # popleft()
         self.device = device
-
+        self.priority = torch.tensor(self.MAX_PRIORITY, dtype=torch.float).to(
+            self.device)  # Set initial priority to maximum
 
         # self.optimizer = torch.optim.SGD(self.net.parameters(), lr=0.001)
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.0001, betas=(0.9, 0.999), eps=1e-08,
@@ -34,39 +33,21 @@ class Agent:
         #                                   weight_decay=5e-3, amsgrad=True)
 
         self.Q_MAX = 0.
-        # self.loss = nn.CrossEntropyLoss(reduction='mean').to(self.device)
         self.loss = nn.MSELoss(reduction='sum').to(self.device)
         # self.loss2 = nn.MSELoss(reduction='sum').to(self.device)
-
     def remember(self, state, action, reward, next_state, a_next, done):
-        self.memory.append((state, action, reward, next_state, a_next, done,self.MAX_PRIORITY))
+        self.memory.append((state, action, reward, next_state, a_next, done, self.MAX_PRIORITY))
 
     def train_short_memory(self, state, action, reward, next_state, a_next, done):
         if len(self.memory) > 0:
             self.train_step(state, action, reward, next_state, a_next, done)
 
     def train_long_memory(self):
+        # Without bias aka. random
         if len(self.memory) > self.BATCH_SIZE:
-            priorities = []
-            for exp in self.memory:
-                if isinstance(exp[-1], torch.Tensor) and exp[-1].numel() > 1:
-                    priorities.extend(exp[-1].cpu().numpy())
-                else:
-                    priorities.append(exp[-1])
-            priorities_tensor = torch.tensor(priorities, dtype=torch.float).to(self.device)
-            priorities_sum = torch.sum(priorities_tensor)
-            probabilities = priorities_tensor / priorities_sum
-            probabilities /= probabilities.sum()  # Normalize probabilities
-            num_samples = min(self.BATCH_SIZE, len(self.memory))
-            valid_indices = range(len(self.memory))
-            mini_sample_indices = np.random.choice(valid_indices, num_samples, replace=True)
-            mini_sample = [self.memory[i] for i in mini_sample_indices]
+            mini_sample = random.sample(self.memory, self.BATCH_SIZE)  # list of tuples
         else:
             mini_sample = self.memory
-
-        if not mini_sample:
-            print("EMPTY")
-            return
         states, actions, rewards, next_states, next_actions, dones, priorities = zip(*mini_sample)
         self.train_step(states, actions, rewards, next_states, next_actions, dones)
 
@@ -91,15 +72,19 @@ class Agent:
 
         self.optimizer.zero_grad()
         lMSE = self.loss(target, prediction)
-        ldp = self.vF.distributional_projection(r, target,prediction)
-        l = 0.5*lMSE+ldp
+        # LDP is better for long term learning but MSE gives faste
+        ldp = self.vF.distributional_projection(r, target, prediction)
+        l = 0.5*lMSE + ldp
         l.backward()
-        # Update priorities
-        abs_td_errors = torch.abs(target - prediction).detach()
-        priorities = abs_td_errors + 1e-6  # Add small constant to avoid zero priority
 
-        for i, priority in enumerate(priorities):
-            self.memory[i] = (*self.memory[i][:-1], priority)
+        # # Update priorities
+        # abs_td_errors = torch.abs(target - prediction).detach() # Magnitude of our TD error
+        # priorities = abs_td_errors + 1e-6  # Add small constant to avoid zero priority
+        #
+        # for i, priority in enumerate(priorities):
+        #     experience = self.memory[i]
+        #     updated_experience = (*experience[:-1], priority)
+        #     self.memory[i] = updated_experience
 
         self.optimizer.step()
         # state_b = self.net.state_dict().__str__()
@@ -115,7 +100,7 @@ class Agent:
 
     def take_action(self, s, step_counter, dataset, game):
         _, _, body_part = dataset.decode_input(s)
-        actions, is_random_next = self.chooseAction(s, dataset,game)
+        actions, is_random_next = self.chooseAction(s, dataset, game)
         if is_random_next == 1:
             self.no_of_guesses += 1
             action = self.actions[step_counter][body_part]
@@ -156,10 +141,17 @@ class Agent:
         result = torch.sum((n - 1) * input * indices, dim=-1)
         return result
 
-    def chooseAction(self, state, dataset,game):
+    def chooseAction(self, state, dataset, game):
         is_random = 0
         hair_type, skin_type, _ = dataset.decode_input(state)
-        if np.random.uniform(0., 1.) < self.vF.epsilon * (game.game_cycles*game.number_of_treatments*game.games/2)/(game.total_counter+1):   # random action
+        explore_coef = self.vF.epsilon * (
+                game.game_cycles * game.number_of_treatments * game.games / 2) / (
+                game.total_counter + 1)
+        if game.cycle >= game.game_cycles-1:
+            explore_coef = -1.
+        else:
+            pass
+        if np.random.uniform(0., 1.) < explore_coef:
             self.actions, _, _ = dataset.create_target(200)  # For kj_total_var single regression output
             is_random = 1
         else:

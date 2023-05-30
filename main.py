@@ -4,6 +4,7 @@ import random
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
+from matplotlib.ticker import MaxNLocator
 from torch import optim
 
 from agent import Agent
@@ -37,15 +38,16 @@ valueFunc = ValueFunction(alpha, epsilon, gamma, tau, device, no_of_actions, v_m
                           v_max=no_of_games * no_of_rounds)
 agent = Agent(net, net2, valueFunc, device)
 game = Game(valueFunc, agent, device)
-game.game_cycles = 10
+game.game_cycles = 12
 game.games = no_of_games
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
 r_data = []
 l_data = []
 c_map_data = []
-
+ax = plt.figure().gca()
 for i in range(0, game.game_cycles):
-    rewards = game.playntrain(game, dataset)
+    game.cycle = i
+    rewards = game.playntrain(game, dataset,games=no_of_games)
     # game.net = net
     print("GAME CYCLE : ", i, "\n", "REWARDS TOTAL : ", sum(rewards), "No. of RANDOM GUESSES: ",
           game.agent.no_of_guesses)
@@ -53,12 +55,12 @@ for i in range(0, game.game_cycles):
     l_data.append("Epoch: " + str(i))
     c_map_data.append(cmap(i))
 
-plt.hist(r_data, alpha=0.8, stacked=False, histtype='bar', label=l_data, color=c_map_data)
-#
-plt.legend(prop={'size': 6}, loc='upper center', bbox_to_anchor=(0.5, 1.08),
-           ncol=5, fancybox=True, shadow=True)
+ax.hist(r_data, alpha=0.8, stacked=False, histtype='bar', label=l_data, color=c_map_data)
+ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+ax.legend(prop={'size': 6}, loc='upper center', bbox_to_anchor=(0.5, 1.08),
+          ncol=6, fancybox=True, shadow=True)
 
 plt.xlabel("Reward value per game")
-plt.ylabel("No. of rewards")
+plt.ylabel("No. of games")
 plt.grid()
 plt.show()
