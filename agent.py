@@ -87,6 +87,7 @@ class Agent:
         #     self.memory[i] = updated_experience
 
         self.optimizer.step()
+
         # state_b = self.net.state_dict().__str__()
         # self.optimizer2.zero_grad()
         # l2 = self.loss2(target, self.net2(s_next))
@@ -97,6 +98,10 @@ class Agent:
 
         # if state_a != state_b:
         #    print("LAYERS WEIGHT SUM:", self.net.layers[0].weight.sum())
+
+        ###### COMPUTATIONAL GRAPH GENERATION ######
+        # dot = make_dot(prediction, params=dict(self.net.named_parameters()))
+        # dot.render(directory='doctest-output', view=True)
 
     def take_action(self, s, step_counter, dataset, game):
         _, _, body_part = dataset.decode_input(s)
@@ -147,8 +152,10 @@ class Agent:
         explore_coef = self.vF.epsilon * (
                 game.game_cycles * game.number_of_treatments * game.games / 2) / (
                 game.total_counter + 1)
-        if game.cycle >= game.game_cycles-1:
-            explore_coef = -1.
+        # if game.cycle >= game.game_cycles-2:
+        #     explore_coef = self.vF.epsilon / 2
+        if game.cycle >= game.game_cycles - 1:
+            explore_coef = -.1
         else:
             pass
         if np.random.uniform(0., 1.) < explore_coef:
@@ -156,8 +163,6 @@ class Agent:
             is_random = 1
         else:
             state = state.to(self.device)
-            # dot = make_dot(self.actions, params=dict(self.net.named_parameters()))
-            # dot.render(directory='doctest-output', view=True)
             self.actions = self.net(state.clone())
         return self.actions.clone(), is_random
 
