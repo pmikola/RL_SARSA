@@ -1,5 +1,6 @@
 # SARSA(on-policy TD-LAMBDA) FOR AUTOMATIC LASER PARAMETERS SETTING
 import random
+import time
 
 import numpy as np
 import torch
@@ -25,7 +26,8 @@ tau = 0.01
 no_of_games = 100
 no_of_rounds = 9
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+print("DEVICE: ",device)
+time.sleep(1)
 dataset = DataSet(device)
 torch.manual_seed(2023)
 random.seed(2023)

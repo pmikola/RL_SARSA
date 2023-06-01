@@ -19,7 +19,7 @@ class Agent:
         print(self.net2)
         self.BATCH_SIZE = 200
         self.MAX_MEMORY = 100_000
-        self.MAX_PRIORITY = torch.tensor(1.)
+        self.MAX_PRIORITY = torch.tensor(1.).to(device)
         self.vF = valueFunction
         self.memory = deque(maxlen=self.MAX_MEMORY)  # popleft()
         self.device = device
@@ -35,6 +35,7 @@ class Agent:
         self.Q_MAX = 0.
         self.loss = nn.MSELoss(reduction='sum').to(self.device)
         # self.loss2 = nn.MSELoss(reduction='sum').to(self.device)
+
     def remember(self, state, action, reward, next_state, a_next, done):
         self.memory.append((state, action, reward, next_state, a_next, done, self.MAX_PRIORITY))
 
@@ -42,30 +43,61 @@ class Agent:
         if len(self.memory) > 0:
             self.train_step(state, action, reward, next_state, a_next, done)
 
-    def train_long_memory(self):
-        # Without bias aka. random
-        if len(self.memory) > self.BATCH_SIZE:
-            mini_sample = random.sample(self.memory, self.BATCH_SIZE)  # list of tuples
-        else:
-            mini_sample = self.memory
+    def prioritized_replay(self, mini_sample, no_top_k):
         states, actions, rewards, next_states, next_actions, dones, priorities = zip(*mini_sample)
-        self.train_step(states, actions, rewards, next_states, next_actions, dones)
+        prio = torch.stack(list(priorities), dim=0)
+        values, ind = torch.topk(prio, no_top_k)
+        indexes = ind.type(torch.int64).tolist()
+        # print(len(indexes))
+        s = []
+        a = []
+        r = []
+        s_next = []
+        a_next = []
+        d = []
+        for i in indexes:
+            s.append(states[i])
+            a.append(actions[i])
+            r.append(rewards[i])
+            s_next.append(next_states[i])
+            a_next.append(next_actions[i])
+            d.append(dones[i])
+        return s, a, r, s_next, a_next, d
+
+    def train_long_memory(self,total_counter):
+        if self.BATCH_SIZE * 3 > len(self.memory) > self.BATCH_SIZE or total_counter % 2 and len(self.memory) > self.BATCH_SIZE:
+            # RANDOM REPLAY
+            mini_sample = random.sample(self.memory, self.BATCH_SIZE)  # list of tuples
+            # mini_sample = self.memory
+            # time.sleep(1)
+            s, a, r, s_next, a_next, d, p = zip(*mini_sample)
+            self.train_step(s, a, r, s_next, a_next, d)
+        elif len(self.memory) >= self.BATCH_SIZE * 3 or total_counter % 3 and len(self.memory) > self.BATCH_SIZE:
+            # PRIORITY HIGH LOSS EXPERIENCE REPLAY
+            mini_sample = self.memory
+            s, a, r, s_next, a_next, d = self.prioritized_replay(mini_sample, self.BATCH_SIZE)
+            self.train_step(s, a, r, s_next, a_next, d)
+        else:
+            # RANDOM REPLAY
+            mini_sample = self.memory
+            s, a, r, s_next, a_next, d, p = zip(*mini_sample)
+            # time.sleep(1)
+            self.train_step(s, a, r, s_next, a_next, d)
 
     def train_step(self, s, a, r, s_next, a_next, game_over):
         if len(torch.stack(list(s), dim=0).shape) == 1:
-            s = torch.unsqueeze(torch.tensor(s, dtype=torch.float), 0).to(self.device)
-            s_next = torch.unsqueeze(torch.tensor(s_next, dtype=torch.float), 0).to(self.device)
-            a = torch.unsqueeze(torch.tensor(a, dtype=torch.float), 0).to(self.device)
-            a_next = torch.unsqueeze(torch.tensor(a_next, dtype=torch.float), 0).to(self.device)
+            s = torch.unsqueeze(s.clone().detach(), 0).to(self.device)
+            s_next = torch.unsqueeze(s_next.clone().detach(), 0).to(self.device)
+            a = torch.unsqueeze(a.clone().detach(), 0).to(self.device)
+            a_next = torch.unsqueeze(a_next.clone().detach(), 0).to(self.device)
             r = torch.unsqueeze(torch.tensor(r, dtype=torch.float), 0).to(self.device)
             game_over = (game_over,)  # tuple with only one value
         else:
-            s = torch.tensor(torch.stack(list(s), dim=0), dtype=torch.float).to(self.device)
-            a = torch.tensor(torch.stack(list(a), dim=0), dtype=torch.float).to(self.device)
-            r = torch.tensor(torch.stack(list(torch.tensor(r, dtype=torch.float)), dim=0), dtype=torch.float).to(
-                self.device)
-            s_next = torch.tensor(torch.stack(list(s_next), dim=0), dtype=torch.float).to(self.device)
-            a_next = torch.tensor(torch.stack(list(a_next), dim=0), dtype=torch.float).to(self.device)
+            s = torch.stack(list(s), dim=0).clone().detach().to(self.device)
+            a = torch.stack(list(a), dim=0).clone().detach().to(self.device)
+            r = torch.stack(list(torch.tensor(r, dtype=torch.float))).clone().detach().to(self.device)
+            s_next = torch.stack(list(s_next), dim=0).clone().detach().to(self.device)
+            a_next = torch.stack(list(a_next), dim=0).clone().detach().to(self.device)
 
         target, prediction = self.vF.Q_value(self.net, self.net2, s, a, r, s_next, a_next, game_over)
         # state_a = self.net.state_dict().__str__()
@@ -74,18 +106,17 @@ class Agent:
         lMSE = self.loss(target, prediction)
         # LDP is better for long term learning but MSE gives faste
         ldp = self.vF.distributional_projection(r, target, prediction)
-        l = 0.5*lMSE + ldp
+        l = 0.5 * lMSE + ldp
         l.backward()
 
-        # # Update priorities
-        # abs_td_errors = torch.abs(target - prediction).detach() # Magnitude of our TD error
-        # priorities = abs_td_errors + 1e-6  # Add small constant to avoid zero priority
-        #
-        # for i, priority in enumerate(priorities):
-        #     experience = self.memory[i]
-        #     updated_experience = (*experience[:-1], priority)
-        #     self.memory[i] = updated_experience
+        # Update priorities
+        abs_td_errors = torch.abs(target - prediction).detach()  # Magnitude of our TD error
+        priorities = abs_td_errors + 1e-7  # Add small constant to avoid zero priority
 
+        for i, priority in enumerate(priorities):
+            experience = self.memory[i]
+            updated_experience = (*experience[:-1], torch.max(priority))
+            self.memory[i] = updated_experience
         self.optimizer.step()
 
         # state_b = self.net.state_dict().__str__()
@@ -151,7 +182,7 @@ class Agent:
         hair_type, skin_type, _ = dataset.decode_input(state)
         explore_coef = self.vF.epsilon * (
                 game.game_cycles * game.number_of_treatments * game.games / 2) / (
-                game.total_counter + 1)
+                               game.total_counter + 1)
         # if game.cycle >= game.game_cycles-2:
         #     explore_coef = self.vF.epsilon / 2
         if game.cycle >= game.game_cycles - 1:

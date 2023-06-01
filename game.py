@@ -64,7 +64,7 @@ class Game:
                 # steps_total += 1
                 if step_counter >= self.number_of_treatments:
                     step_counter = 0
-                    self.agent.train_long_memory()
+                    self.agent.train_long_memory(self.total_counter)
                     rewards.append(self.reward)
                     self.reward = 0.
                     break
