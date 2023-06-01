@@ -65,24 +65,38 @@ class Agent:
         return s, a, r, s_next, a_next, d
 
     def train_long_memory(self,total_counter):
-        if self.BATCH_SIZE * 3 > len(self.memory) > self.BATCH_SIZE or total_counter % 2 and len(self.memory) > self.BATCH_SIZE:
+        k = 0
+        if total_counter % 2 and len(self.memory) > self.BATCH_SIZE:
             # RANDOM REPLAY
+            if k == 1:
+                print("RANDOM")
             mini_sample = random.sample(self.memory, self.BATCH_SIZE)  # list of tuples
             # mini_sample = self.memory
             # time.sleep(1)
             s, a, r, s_next, a_next, d, p = zip(*mini_sample)
             self.train_step(s, a, r, s_next, a_next, d)
-        elif len(self.memory) >= self.BATCH_SIZE * 3 or total_counter % 3 and len(self.memory) > self.BATCH_SIZE:
+        elif total_counter % 5 and len(self.memory) > self.BATCH_SIZE:
             # PRIORITY HIGH LOSS EXPERIENCE REPLAY
+            if k == 1:
+                print("PRIORITY")
             mini_sample = self.memory
             s, a, r, s_next, a_next, d = self.prioritized_replay(mini_sample, self.BATCH_SIZE)
             self.train_step(s, a, r, s_next, a_next, d)
         else:
             # RANDOM REPLAY
-            mini_sample = self.memory
-            s, a, r, s_next, a_next, d, p = zip(*mini_sample)
-            # time.sleep(1)
-            self.train_step(s, a, r, s_next, a_next, d)
+            if len(self.memory) > self.BATCH_SIZE:
+                if k == 1:
+                    print("RANDOM -> BATCH SIZE")
+                mini_sample = random.sample(self.memory, self.BATCH_SIZE)  # list of tuples
+                s, a, r, s_next, a_next, d, p = zip(*mini_sample)
+                self.train_step(s, a, r, s_next, a_next, d)
+            else:
+                if k == 1:
+                    print("MEMORY SIZE")
+                mini_sample = self.memory
+                s, a, r, s_next, a_next, d, p = zip(*mini_sample)
+                # time.sleep(1)
+                self.train_step(s, a, r, s_next, a_next, d)
 
     def train_step(self, s, a, r, s_next, a_next, game_over):
         if len(torch.stack(list(s), dim=0).shape) == 1:
@@ -181,7 +195,7 @@ class Agent:
         is_random = 0
         hair_type, skin_type, _ = dataset.decode_input(state)
         explore_coef = self.vF.epsilon * (
-                game.game_cycles * game.number_of_treatments * game.games / 2) / (
+                game.game_cycles * game.number_of_treatments * game.games / 1.7) / (
                                game.total_counter + 1)
         # if game.cycle >= game.game_cycles-2:
         #     explore_coef = self.vF.epsilon / 2
