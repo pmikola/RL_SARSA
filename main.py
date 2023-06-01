@@ -18,7 +18,10 @@ from neuralNetwork import NeuralNetwork
 # x = dataSet.decode_input(dataSet.create_input_set())
 # y = dataSet.create_target(15)
 no_of_actions = 256
-no_of_states = 14
+num_e_bits = 5
+num_m_bits = 10
+
+no_of_states = 14 #+ num_e_bits + num_m_bits
 alpha = 0.001
 epsilon = 0.1
 gamma = 0.99
@@ -38,7 +41,7 @@ net.to(device).requires_grad_(True)
 net2.to(device).requires_grad_(True)
 valueFunc = ValueFunction(alpha, epsilon, gamma, tau, device, no_of_actions, v_min=-no_of_games * no_of_rounds,
                           v_max=no_of_games * no_of_rounds)
-agent = Agent(net, net2, valueFunc, device)
+agent = Agent(net, net2, valueFunc,num_e_bits ,num_m_bits, device)
 game = Game(valueFunc, agent, device)
 game.game_cycles = 12
 game.games = no_of_games

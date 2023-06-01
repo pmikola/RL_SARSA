@@ -9,11 +9,18 @@ from torch import nn
 import torch.nn.functional as F
 from torchviz import make_dot
 
+from binary_converter import float2bit
+
 
 class Agent:
-    def __init__(self, neuralNetwork, neuralNetwork2, valueFunction, device):
+    def __init__(self, neuralNetwork, neuralNetwork2, valueFunction, num_e_bits, num_m_bits, device):
         self.net = neuralNetwork
         self.net2 = neuralNetwork2
+        self.num_e_bits = num_e_bits
+        self.num_m_bits = num_m_bits
+        self.n_e_bits = torch.tensor([1.] * self.num_e_bits).to(device)
+        self.n_m_bits = torch.tensor([1.] * self.num_m_bits).to(device)
+        self.sign = torch.tensor([1.]).to(device)
         self.no_of_guesses = 0.
         print(self.net)
         print(self.net2)
@@ -64,7 +71,7 @@ class Agent:
             d.append(dones[i])
         return s, a, r, s_next, a_next, d
 
-    def train_long_memory(self,total_counter):
+    def train_long_memory(self, total_counter):
         k = 0
         if total_counter % 2 and len(self.memory) > self.BATCH_SIZE:
             # RANDOM REPLAY
@@ -97,6 +104,14 @@ class Agent:
                 s, a, r, s_next, a_next, d, p = zip(*mini_sample)
                 # time.sleep(1)
                 self.train_step(s, a, r, s_next, a_next, d)
+    def loss2state(self,i,p,updated_experience):
+        self.loss_bits = \
+            float2bit(torch.tensor([p, p]), num_e_bits=self.num_e_bits, num_m_bits=self.num_m_bits, bias=127.)[
+                0].to(
+                self.device)
+        self.memory[i] = list(updated_experience)
+        for j in range(0, len(self.loss_bits)):
+            self.memory[i][0][j] = self.loss_bits[j]
 
     def train_step(self, s, a, r, s_next, a_next, game_over):
         if len(torch.stack(list(s), dim=0).shape) == 1:
@@ -112,7 +127,7 @@ class Agent:
             r = torch.stack(list(torch.tensor(r, dtype=torch.float))).clone().detach().to(self.device)
             s_next = torch.stack(list(s_next), dim=0).clone().detach().to(self.device)
             a_next = torch.stack(list(a_next), dim=0).clone().detach().to(self.device)
-
+        # print(s)
         target, prediction = self.vF.Q_value(self.net, self.net2, s, a, r, s_next, a_next, game_over)
         # state_a = self.net.state_dict().__str__()
 
@@ -129,8 +144,12 @@ class Agent:
 
         for i, priority in enumerate(priorities):
             experience = self.memory[i]
-            updated_experience = (*experience[:-1], torch.max(priority))
+            p = torch.max(priority)
+            updated_experience = (*experience[:-1], p)
             self.memory[i] = updated_experience
+            # LOSS AS BIT ARRAY STATE INPUT
+            #self.loss2state( i, p, updated_experience)
+
         self.optimizer.step()
 
         # state_b = self.net.state_dict().__str__()
@@ -170,6 +189,7 @@ class Agent:
         else:
             done = torch.tensor([0.]).to(self.device)
             game_over = False
+        # s = torch.cat((patient, turn, done, self.n_e_bits, self.n_m_bits), axis=0)
 
         s = torch.cat((patient, turn, done), axis=0)
         # print(s)
@@ -224,11 +244,12 @@ class Agent:
         action_space[idx] = 1.
         return action_space
 
-    def checkReward(self, reward, body_part, action, dataset, step_counter, std):
+    def checkReward(self, reward, action, state, dataset, step_counter, std):
+        hair_type, skin_type, body_part = dataset.decode_input(state)
         ref_value = torch.sum(dataset.kj_total[step_counter][body_part]) / 2
         ref_value_min = ref_value - ref_value * std / 100
         ref_value_max = ref_value + ref_value * std / 100
-        if ref_value_min < action < ref_value_max:
+        if ref_value_min < action < ref_value_max :
             reward += 1
         else:
             reward -= 1

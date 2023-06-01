@@ -43,9 +43,9 @@ class Game:
             while True:
                 self.s, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
 
-                self.a, self.a_value, body_part = self.agent.take_action(self.s, step_counter, dataset,
+                self.a, self.a_value, _ = self.agent.take_action(self.s, step_counter, dataset,
                                                                          game)
-                self.reward = self.agent.checkReward(self.reward, body_part, self.a_value, self.dataset, step_counter,
+                self.reward = self.agent.checkReward(self.reward, self.a_value,self.s, self.dataset, step_counter,
                                                      self.std)
 
                 self.s_next, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
