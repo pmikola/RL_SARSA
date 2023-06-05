@@ -45,13 +45,16 @@ class Game:
 
                 self.a, self.a_value, _ = self.agent.take_action(self.s, step_counter, dataset,
                                                                          game)
-                self.reward = self.agent.checkReward(self.reward, self.a_value,self.s, self.dataset, step_counter,
+
+                self.reward = self.agent.checkReward(self.reward, self.a_value,self.s, self.dataset, step_counter,game,self.lower_limit,self.upper_limit,
                                                      self.std)
 
                 self.s_next, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
-                self.a_next, _, _ = self.agent.take_action(self.s_next, step_counter, dataset,
+                self.a_next, a_val_next, _ = self.agent.take_action(self.s_next, step_counter, dataset,
                                                            game)
 
+                # print(self.a_value,a_val_next)
+                # time.sleep(1)
                 # train short memory
                 self.agent.train_short_memory(self.s, self.a, self.reward, self.s_next, self.a_next, self.game_over)
 
@@ -68,5 +71,4 @@ class Game:
                     rewards.append(self.reward)
                     self.reward = 0.
                     break
-
         return rewards

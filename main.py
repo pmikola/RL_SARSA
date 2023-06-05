@@ -21,29 +21,29 @@ no_of_actions = 256
 num_e_bits = 5
 num_m_bits = 10
 
-no_of_states = 14 #+ num_e_bits + num_m_bits
-alpha = 0.001
+no_of_states = 14  # + num_e_bits + num_m_bits
+alpha = 0.0001
 epsilon = 0.1
 gamma = 0.99
 tau = 0.01
 no_of_games = 100
 no_of_rounds = 9
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("DEVICE: ",device)
+print("DEVICE: ", device)
 time.sleep(1)
 dataset = DataSet(device)
 torch.manual_seed(2023)
 random.seed(2023)
 np.random.seed(2023)
-net = NeuralNetwork(no_of_actions, no_of_states)
-net2 = NeuralNetwork(no_of_actions, no_of_states)
+net = NeuralNetwork(no_of_actions, no_of_states,device)
+net2 = NeuralNetwork(no_of_actions, no_of_states,device)
 net.to(device).requires_grad_(True)
 net2.to(device).requires_grad_(True)
 valueFunc = ValueFunction(alpha, epsilon, gamma, tau, device, no_of_actions, v_min=-no_of_games * no_of_rounds,
                           v_max=no_of_games * no_of_rounds)
-agent = Agent(net, net2, valueFunc,num_e_bits ,num_m_bits, device)
+agent = Agent(net, net2, valueFunc, num_e_bits, num_m_bits, device)
 game = Game(valueFunc, agent, device)
-game.game_cycles = 12
+game.game_cycles = 18
 game.games = no_of_games
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
 r_data = []
@@ -52,7 +52,7 @@ c_map_data = []
 ax = plt.figure().gca()
 for i in range(0, game.game_cycles):
     game.cycle = i
-    rewards = game.playntrain(game, dataset,games=no_of_games)
+    rewards = game.playntrain(game, dataset, games=no_of_games)
     # game.net = net
     print("GAME CYCLE : ", i, "\n", "REWARDS TOTAL : ", sum(rewards), "No. of RANDOM GUESSES: ",
           game.agent.no_of_guesses)

@@ -1,10 +1,10 @@
 import time
 
 import torch
-
+import torch.nn.functional as F
 
 class ValueFunction:
-    def __init__(self, alpha, epsilon, gamma, tau, device,no_of_actions,n_steps=2,v_min=-900,v_max=900):
+    def __init__(self, alpha, epsilon, gamma, tau, device, no_of_actions, n_steps=2, v_min=-900, v_max=900):
         self.alpha = alpha
         self.epsilon = epsilon
         self.gamma = gamma
@@ -54,10 +54,15 @@ class ValueFunction:
         lower_bounds = b.floor().long()
         upper_bounds = b.ceil().long()
         # Error check
-        #assert torch.all(lower_bounds >= 0) and torch.all(upper_bounds < Q_target.size(1)), "Index out of bounds error"
+        # assert torch.all(lower_bounds >= 0) and torch.all(upper_bounds < Q_target.size(1)), "Index out of bounds error"
         lower_mask = torch.zeros_like(Q_target).scatter_(1, lower_bounds, 1)
         upper_mask = torch.zeros_like(Q_target).scatter_(1, upper_bounds, 1)
         Q_target = (lower_mask + upper_mask) * 0.5
-        Q_target /= Q_target.sum(dim=1, keepdim=True)
-        loss = -torch.sum(Q_target * torch.log(Q + 1e-8)) / batch_size
+
+        Q_target /= Q_target.sum(dim=1, keepdim=True) #+ 1e-10
+
+        loss = -torch.sum(Q_target * torch.log(F.relu(Q) + 1e-7)) / batch_size
+
+        # loss = -torch.sum(Q_target * torch.log(Q + 1e-8)) / batch_size
+
         return loss
