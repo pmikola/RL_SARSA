@@ -5,7 +5,7 @@ from torch import nn
 
 
 class Game:
-    def __init__(self, valueFunction, agent, device):
+    def __init__(self, valueFunction, agent, device,no_of_rounds):
         self.reward = 0.
         self.laser_params = None
         self.patient = None
@@ -19,7 +19,7 @@ class Game:
         self.upper_limit = 30.
         self.game_over = False
         self.total_counter = 0.
-        self.number_of_treatments = 9
+        self.number_of_treatments = no_of_rounds
         self.game_cycles = None
         self.games = None
         self.cycle = None
@@ -37,6 +37,7 @@ class Game:
         #self.agent.net2.train()
         self.dataset = dataset
         rewards = []
+        a_val = []
         #self.total_counter = 0.
         step_counter = 0
         for k in range(games):
@@ -69,6 +70,7 @@ class Game:
                     step_counter = 0
                     self.agent.train_long_memory(self.total_counter)
                     rewards.append(self.reward)
+                    a_val.append(self.a_value)
                     self.reward = 0.
                     break
-        return rewards
+        return rewards,a_val

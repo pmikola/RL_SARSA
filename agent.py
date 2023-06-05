@@ -14,10 +14,12 @@ from binary_converter import float2bit
 
 class Agent:
     def __init__(self, neuralNetwork, neuralNetwork2, valueFunction, num_e_bits, num_m_bits, device):
+
         self.net = neuralNetwork
         self.net2 = neuralNetwork2
         self.num_e_bits = num_e_bits
         self.num_m_bits = num_m_bits
+        self.c = 0
         self.n_e_bits = torch.tensor([1.] * self.num_e_bits).to(device)
         self.n_m_bits = torch.tensor([1.] * self.num_m_bits).to(device)
         self.sign = torch.tensor([1.]).to(device)
@@ -34,11 +36,11 @@ class Agent:
             self.device)  # Set initial priority to maximum
 
         # self.optimizer = torch.optim.SGD(self.net.parameters(), lr=0.001)
-        # self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.0001, betas=(0.9, 0.999), eps=1e-08,
-        # weight_decay=0, amsgrad=True)
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.0001, betas=(0.9, 0.999), eps=1e-08,
+        weight_decay=0, amsgrad=True)
 
-        self.optimizer = torch.optim.RAdam(self.net.parameters(), lr=0.00005, betas=(0.9, 0.999), eps=1e-08,
-                                           weight_decay=0)
+        # self.optimizer = torch.optim.RAdam(self.net.parameters(), lr=0.0001, betas=(0.9, 0.999), eps=1e-08,
+        #                                    weight_decay=0)
         # self.optimizer2 = torch.optim.Adam(self.net2.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08,
         #                                   weight_decay=5e-3, amsgrad=True)
 
@@ -79,7 +81,7 @@ class Agent:
 
     def train_long_memory(self, total_counter):
         k = 0
-        if total_counter % 3 and len(self.memory) > self.BATCH_SIZE:
+        if total_counter % 2 and len(self.memory) > self.BATCH_SIZE:
             # RANDOM REPLAY
             if k == 1:
                 print("RANDOM")
@@ -88,7 +90,7 @@ class Agent:
             # time.sleep(1)
             s, a, r, s_next, a_next, d, p = zip(*mini_sample)
             self.train_step(s, a, r, s_next, a_next, d)
-        elif total_counter % 2 and len(self.memory) > self.BATCH_SIZE:
+        elif total_counter % 3 and len(self.memory) > self.BATCH_SIZE:
             # PRIORITY HIGH LOSS EXPERIENCE REPLAY
             if k == 1:
                 print("PRIORITY")
@@ -133,6 +135,7 @@ class Agent:
             a = torch.stack(list(a), dim=0).clone().detach().to(self.device)
             r = torch.stack(list(torch.tensor(r, dtype=torch.float))).clone().detach().to(self.device)
             s_next = torch.stack(list(s_next), dim=0).clone().detach().to(self.device)
+
             a_next = torch.stack(list(a_next), dim=0).clone().detach().to(self.device)
             # hn = torch.stack(list(hn), dim=0).clone().detach().to(self.device)
         # print(s)
@@ -187,6 +190,9 @@ class Agent:
             # print(action)
             a = game.agent.value2action(self.actions, self.net.no_of_heads,
                                         game.lower_limit, game.upper_limit)
+            a = torch.unsqueeze(a,dim=0)
+
+
         else:
             a = self.actions
         a_value = game.agent.action2value(a, self.net.no_of_heads, game.lower_limit, game.upper_limit)
@@ -239,6 +245,7 @@ class Agent:
         if np.random.uniform(0., 1.) < explore_coef:
             # self.actions, _, _ = dataset.create_target(200)  # For kj_total_var std
             self.actions = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
+
             is_random = 1
         else:
             state = state.to(self.device)
@@ -265,24 +272,35 @@ class Agent:
         ref_value_max = ref_value + ref_value * std / 100
         reward_factor = torch.abs(ref_value - action).item()
         reward_factor_0 = torch.abs(0. - action).item()
-        rf = -(reward_factor + 1e-8) / abs(upper_limit - lower_limit)*0.5
-        rf_0 = -(reward_factor_0 + 1e-8) / abs(upper_limit - lower_limit)*0.5
-        if game.cycle > 10:
-            # MAIN TASK ->LEARNING
+        rf = -(reward_factor + 1e-8) / abs(upper_limit - lower_limit)
+        rf_0 = -(reward_factor_0 + 1e-8) / abs(upper_limit - lower_limit)
+        r = 0.1
+
+        if step_counter == 0:
+            self.c = not self.c
+            #print(self.counter)
+        if self.c == 1:
+            r_0 = 8.
+            r_a = 2.
+        else:
+            r_0 = 2.
+            r_a = 8.
+        if game.cycle > 12:
+            # MAIN TASK -> TRAINING
             if skin_type > 2 and action >= 1. or hair_type > 1 and action >= 1.:
-                reward -= 0.5 + rf_0
+                reward -= r*r_0 + rf_0
             else:
-                reward += 0.5 + rf_0
+                reward += r*r_0 + rf_0
                 if ref_value_min < action < ref_value_max:
-                    reward += 0.5 + rf
+                    reward += r*r_a + rf
                 else:
-                    reward -= 0.5 + rf
+                    reward -= r*r_a + rf
         else:
             # PRE-TRAINING WITH SIMPLER TASK
             if ref_value_min < action < ref_value_max:
-                reward += 0.5 + rf
+                reward += r*10. + rf
             else:
-                reward -= 0.5 + rf
+                reward -= r*10. + rf
         return reward
 
     def int2binary(self, step_counter):
