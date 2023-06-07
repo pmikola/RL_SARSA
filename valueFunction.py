@@ -17,10 +17,10 @@ class ValueFunction:
         self.tau = tau
         self.n_steps = n_steps
 
-    def Q_value(self, net, net2, s, a, r, s_next, a_next, game_over):
-        Q = net(s)
+    def Q_value(self, net, net2, s, a, r, s_next, a_next, game_over,task_indicator):
+        Q = net(s,task_indicator)
         # Calculate Q-values using the main network
-        Q_main = net(s_next).detach()
+        Q_main = net(s_next,task_indicator).detach()
         Q_target = Q.clone()
 
         for idx in range(len(game_over)):
