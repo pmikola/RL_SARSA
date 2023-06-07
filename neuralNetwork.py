@@ -18,12 +18,12 @@ class NeuralNetwork(nn.Module):
         self.device = device
         self.hidden = self.initHidden()
 
-        self.cx1_1 = nn.Linear(self.no_of_states * 4 + 2, self.no_of_states * 4, bias=True)
-        self.cx1_2 = nn.Linear(self.no_of_states * 4, 1, bias=False)
-        self.cx2_1 = nn.Linear(self.no_of_states * 4 + 2, self.no_of_states * 4, bias=True)
-        self.cx2_2 = nn.Linear(self.no_of_states * 4, 1, bias=False)
-        self.cx3_1 = nn.Linear(self.no_of_states * 4 + 2, self.no_of_states * 4, bias=True)
-        self.cx3_2 = nn.Linear(self.no_of_states * 4, 1, bias=False)
+        self.cx1_1 = nn.Linear(self.no_of_states * 4 + 2, self.hidden_size * 2, bias=True)
+        self.cx1_2 = nn.Linear(self.hidden_size * 2, self.hidden_size * 2, bias=False)
+        self.cx2_1 = nn.Linear(self.no_of_states * 4 + 2, self.hidden_size, bias=True)
+        self.cx2_2 = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
+        self.cx3_1 = nn.Linear(self.no_of_states * 4 + 2,self.no_of_heads, bias=True)
+        self.cx3_2 = nn.Linear(self.no_of_heads, self.no_of_heads, bias=False)
 
         self.linear1 = nn.Linear(self.no_of_states * 2, self.hidden_size * 2, bias=True)
         self.linear2 = nn.Linear(self.hidden_size * 2, self.hidden_size, bias=True)
@@ -53,7 +53,9 @@ class NeuralNetwork(nn.Module):
         kWTA = torch.FloatTensor(input_vector.shape[0], no_neurons).uniform_(0., 0.25).to(self.device)  # Best
         # Inhibition so far <- uniform clipping weights in range
         for i in range(0, input_vector.shape[0]):
-            k = k_winers[i] * no_neurons
+            #k = k_winers[i] * no_neurons
+            k = torch.argmax(k_winers[i])
+            #print(k)
             top_k_val, top_k_ind = torch.topk(input_vector[i], k.int().item(), largest=True, sorted=False)
             # kWTA[i] = input_vector[i]*0.5 # Inhibition with divisor
             kWTA[i][top_k_ind] = top_k_val  # Unchanged top-k values for gradient calculation (backprop)
@@ -70,11 +72,11 @@ class NeuralNetwork(nn.Module):
         ti = torch.cat([ti] * input.shape[0])
         context_input = torch.cat((input, ti,input, ti), dim=1)
         cx1 = torch.tanh(self.cx1_1(context_input))
-        cx1 = F.sigmoid(self.cx1_2(cx1))
+        cx1 = F.softmax(self.cx1_2(cx1),dim=1)
         cx2 = torch.tanh(self.cx2_1(context_input))
-        cx2 = F.sigmoid(self.cx2_2(cx2))
+        cx2 = F.softmax(self.cx2_2(cx2),dim=1)
         cx3 = torch.tanh(self.cx3_1(context_input))
-        cx3 = F.sigmoid(self.cx3_2(cx3))
+        cx3 = F.softmax(self.cx3_2(cx3),dim=1)
 
         x = self.linear1(input)
         # x = torch.tanh(x)
