@@ -24,6 +24,7 @@ class Agent:
         self.n_m_bits = torch.tensor([1.] * self.num_m_bits).to(device)
         self.sign = torch.tensor([1.]).to(device)
         self.no_of_guesses = 0.
+        self.task_indicator = torch.tensor([0.]).to(device)
         print(self.net)
         print(self.net2)
         self.BATCH_SIZE = 200
@@ -139,7 +140,7 @@ class Agent:
             a_next = torch.stack(list(a_next), dim=0).clone().detach().to(self.device)
             # hn = torch.stack(list(hn), dim=0).clone().detach().to(self.device)
         # print(s)
-        target, prediction = self.vF.Q_value(self.net, self.net2, s, a, r, s_next, a_next, game_over)
+        target, prediction = self.vF.Q_value(self.net, self.net2, s, a, r, s_next, a_next, game_over,self.task_indicator)
         # state_a = self.net.state_dict().__str__()
 
         self.optimizer.zero_grad()
@@ -249,7 +250,7 @@ class Agent:
             is_random = 1
         else:
             state = state.to(self.device)
-            self.actions = self.net(state.clone())
+            self.actions = self.net(state.clone(),self.task_indicator)
         return self.actions.clone(), is_random
 
     def action2value(self, action, num_of_actions, lower_limit, upper_limit):
@@ -275,18 +276,18 @@ class Agent:
         rf = -(reward_factor + 1e-8) / abs(upper_limit - lower_limit)
         rf_0 = -(reward_factor_0 + 1e-8) / abs(upper_limit - lower_limit)
         r = 0.1
-
-        if step_counter == 0:
-            self.c = not self.c
-            #print(self.counter)
-        if self.c == 1:
-            r_0 = 8.
-            r_a = 2.
-        else:
-            r_0 = 2.
-            r_a = 8.
         if game.cycle > 12:
             # MAIN TASK -> TRAINING
+            self.task_indicator = torch.tensor([1.]).to(self.device)
+            if step_counter == 0:
+                self.c = not self.c
+                # print(self.counter)
+            if self.c == 1:
+                r_0 = 6.
+                r_a = 4.
+            else:
+                r_0 = 4.
+                r_a = 6.
             if skin_type > 2 and action >= 1. or hair_type > 1 and action >= 1.:
                 reward -= r*r_0 + rf_0
             else:
@@ -297,6 +298,7 @@ class Agent:
                     reward -= r*r_a + rf
         else:
             # PRE-TRAINING WITH SIMPLER TASK
+            self.task_indicator = torch.tensor([0.]).to(self.device)
             if ref_value_min < action < ref_value_max:
                 reward += r*10. + rf
             else:
