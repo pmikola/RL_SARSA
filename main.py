@@ -45,7 +45,7 @@ valueFunc = ValueFunction(alpha, epsilon, gamma, tau, device, no_of_actions, v_m
                           v_max=no_of_games * no_of_rounds)
 agent = Agent(net, net2, valueFunc, num_e_bits, num_m_bits, device)
 game = Game(valueFunc, agent, device,no_of_rounds)
-game.game_cycles = 24
+game.game_cycles = 32
 game.games = no_of_games
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
 r_data = []
@@ -56,6 +56,14 @@ ax = plt.figure().gca()
 for i in range(0, game.game_cycles):
     game.cycle = i
     rewards, a_val = game.playntrain(game, dataset, games=no_of_games)
+    if i > game.agent.exp_over+int(game.game_cycles/8)*2:
+        game.task_id = 1.
+    elif i > game.agent.exp_over+int(game.game_cycles/8)*4:
+        game.task_id = 2.
+    elif i > game.agent.exp_over+int(game.game_cycles / 8)*6:
+        game.task_id = 0.
+    else:
+        game.task_id = 0.
     # game.net = net
     print("GAME CYCLE : ", i, "\n", "REWARDS TOTAL : ", sum(rewards), "No. of RANDOM GUESSES: ",
           game.agent.no_of_guesses)
