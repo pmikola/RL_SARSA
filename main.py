@@ -44,8 +44,8 @@ net2.to(device).requires_grad_(True)
 valueFunc = ValueFunction(alpha, epsilon, gamma, tau, device, no_of_actions, v_min=-no_of_games * no_of_rounds,
                           v_max=no_of_games * no_of_rounds)
 agent = Agent(net, net2, valueFunc, num_e_bits, num_m_bits, device)
-game = Game(valueFunc, agent, device,no_of_rounds)
-game.game_cycles = 32
+game = Game(valueFunc, agent, device, no_of_rounds)
+game.game_cycles = 42
 game.games = no_of_games
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
 r_data = []
@@ -56,12 +56,11 @@ ax = plt.figure().gca()
 for i in range(0, game.game_cycles):
     game.cycle = i
     rewards, a_val = game.playntrain(game, dataset, games=no_of_games)
-    if i > game.agent.exp_over+int(game.game_cycles/8)*2:
+    if game.agent.exp_over + int(game.game_cycles / 10) * 4 > i >= game.agent.exp_over + int(game.game_cycles / 10)*2:
         game.task_id = 1.
-    elif i > game.agent.exp_over+int(game.game_cycles/8)*4:
+    elif game.agent.exp_over + int(game.game_cycles / 10) * 6 >= i >= game.agent.exp_over + int(
+            game.game_cycles / 10) * 4:
         game.task_id = 2.
-    elif i > game.agent.exp_over+int(game.game_cycles / 8)*6:
-        game.task_id = 0.
     else:
         game.task_id = 0.
     # game.net = net
@@ -82,8 +81,6 @@ plt.ylabel("No. of games")
 plt.grid()
 plt.show()
 
-
-
 ay = plt.figure().gca()
 
 ay.hist(a_data, density=True, bins=40, alpha=0.65, stacked=True, histtype='stepfilled', label=l_data, color=c_map_data)
@@ -92,5 +89,14 @@ ay.legend(prop={'size': 6}, loc='upper center', bbox_to_anchor=(0.5, 1.14),
 
 plt.xlabel("Values per game")
 plt.ylabel("No. of games")
+plt.grid()
+plt.show()
+
+az = plt.figure().gca()
+rewars_total = np.array(sum(r_data, [])) / (no_of_rounds)
+az.plot(rewars_total)
+
+plt.xlabel("No. Games")
+plt.ylabel("Rewards")
 plt.grid()
 plt.show()

@@ -241,7 +241,7 @@ class Agent:
                                game.total_counter + 1)
         # if game.cycle >= game.game_cycles-2:
         #     explore_coef = self.vF.epsilon / 2
-        if game.cycle >= game.game_cycles - 1:
+        if game.cycle >= game.game_cycles - 2:
             explore_coef = -.1
         else:
             pass
