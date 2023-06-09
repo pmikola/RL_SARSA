@@ -25,7 +25,7 @@ num_m_bits = 10
 
 no_of_states = 14  # + num_e_bits + num_m_bits
 alpha = 0.0001
-epsilon = 0.1
+epsilon = 0.01
 gamma = 0.99
 tau = 0.01
 no_of_games = 100
@@ -44,25 +44,41 @@ net2.to(device).requires_grad_(True)
 valueFunc = ValueFunction(alpha, epsilon, gamma, tau, device, no_of_actions, v_min=-no_of_games * no_of_rounds,
                           v_max=no_of_games * no_of_rounds)
 agent = Agent(net, net2, valueFunc, num_e_bits, num_m_bits, device)
+agent.BATCH_SIZE = 100
 game = Game(valueFunc, agent, device, no_of_rounds)
-game.game_cycles = 42
+game.game_cycles = 90
 game.games = no_of_games
+game.agent.exp_over = int((game.game_cycles- 3) / 3 )
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
 r_data = []
 a_data = []
 l_data = []
 c_map_data = []
 ax = plt.figure().gca()
-for i in range(0, game.game_cycles):
+for i in range(1, game.game_cycles):
     game.cycle = i
     rewards, a_val = game.playntrain(game, dataset, games=no_of_games)
-    if game.agent.exp_over + int(game.game_cycles / 10) * 4 > i >= game.agent.exp_over + int(game.game_cycles / 10)*2:
+    if game.cycle >= int(game.agent.exp_over / 3):
         game.task_id = 1.
-    elif game.agent.exp_over + int(game.game_cycles / 10) * 6 >= i >= game.agent.exp_over + int(
-            game.game_cycles / 10) * 4:
+    if game.cycle >= int(game.agent.exp_over / 3) * 2:
         game.task_id = 2.
-    else:
+    if game.cycle >= game.agent.exp_over:
         game.task_id = 0.
+    if game.cycle >= game.agent.exp_over + int(game.agent.exp_over / 3):
+        game.task_id = 1.
+    if game.cycle >= game.agent.exp_over + int(game.agent.exp_over / 3) * 2:
+        game.task_id = 2.
+    if game.cycle >= game.game_cycles - 3:
+        game.task_id = 0.
+    if game.cycle >= game.game_cycles - 2:
+        game.task_id = 1.
+    if game.cycle >= game.game_cycles - 1:
+        game.task_id = 2.
+
+    if game.cycle % 10 == 0:
+        game.agent.counter_coef = 0
+    game.agent.counter_coef += 1
+
     # game.net = net
     print("GAME CYCLE : ", i, "\n", "REWARDS TOTAL : ", sum(rewards), "No. of RANDOM GUESSES: ",
           game.agent.no_of_guesses)
@@ -93,7 +109,7 @@ plt.grid()
 plt.show()
 
 az = plt.figure().gca()
-rewars_total = np.array(sum(r_data, [])) / (no_of_rounds)
+rewars_total = np.array(sum(r_data, [])) / no_of_rounds
 az.plot(rewars_total)
 
 plt.xlabel("No. Games")
