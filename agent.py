@@ -14,8 +14,9 @@ from binary_converter import float2bit
 
 class Agent:
     def __init__(self, neuralNetwork, neuralNetwork2, valueFunction, num_e_bits, num_m_bits, device):
-
-        self.exp_over = 12
+        self.counter = 0
+        self.counter_coef = 0
+        self.exp_over = 10
         self.net = neuralNetwork
         self.net2 = neuralNetwork2
         self.num_e_bits = num_e_bits
@@ -235,17 +236,16 @@ class Agent:
 
     def chooseAction(self, state, dataset, game):
         is_random = 0
+        explore_coef = self.vF.epsilon
         hair_type, skin_type, _ = dataset.decode_input(state)
-        explore_coef = self.vF.epsilon * (
-                game.game_cycles * game.number_of_treatments * game.games / 1.5) / (
-                               game.total_counter + 1)
-        # if game.cycle >= game.game_cycles-2:
-        #     explore_coef = self.vF.epsilon / 2
+        #c = self.vF.epsilon *  (self.counter_coef + 1)
+
+        #print(1 / np.power(self.counter_coef, 2))
         if game.cycle >= game.game_cycles - 2:
-            explore_coef = -.1
+            explore_coef = self.counter_coef+1 * 1000.
         else:
             pass
-        if np.random.uniform(0., 1.) < explore_coef:
+        if np.random.uniform(-self.vF.epsilon, 1 / np.power(self.counter_coef+1, 2)) > explore_coef:
             # self.actions, _, _ = dataset.create_target(200)  # For kj_total_var std
             self.actions = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
 
