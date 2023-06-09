@@ -15,6 +15,7 @@ from binary_converter import float2bit
 class Agent:
     def __init__(self, neuralNetwork, neuralNetwork2, valueFunction, num_e_bits, num_m_bits, device):
 
+        self.exp_over = 12
         self.net = neuralNetwork
         self.net2 = neuralNetwork2
         self.num_e_bits = num_e_bits
@@ -24,7 +25,7 @@ class Agent:
         self.n_m_bits = torch.tensor([1.] * self.num_m_bits).to(device)
         self.sign = torch.tensor([1.]).to(device)
         self.no_of_guesses = 0.
-        self.task_indicator = torch.tensor([0.]).to(device)
+        self.task_indicator = torch.tensor([0., 0., 0., 0.]).to(device)
         print(self.net)
         print(self.net2)
         self.BATCH_SIZE = 200
@@ -38,7 +39,7 @@ class Agent:
 
         # self.optimizer = torch.optim.SGD(self.net.parameters(), lr=0.001)
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.0001, betas=(0.9, 0.999), eps=1e-08,
-        weight_decay=0, amsgrad=True)
+                                          weight_decay=0, amsgrad=True)
 
         # self.optimizer = torch.optim.RAdam(self.net.parameters(), lr=0.0001, betas=(0.9, 0.999), eps=1e-08,
         #                                    weight_decay=0)
@@ -140,7 +141,8 @@ class Agent:
             a_next = torch.stack(list(a_next), dim=0).clone().detach().to(self.device)
             # hn = torch.stack(list(hn), dim=0).clone().detach().to(self.device)
         # print(s)
-        target, prediction = self.vF.Q_value(self.net, self.net2, s, a, r, s_next, a_next, game_over,self.task_indicator)
+        target, prediction = self.vF.Q_value(self.net, self.net2, s, a, r, s_next, a_next, game_over,
+                                             self.task_indicator)
         # state_a = self.net.state_dict().__str__()
 
         self.optimizer.zero_grad()
@@ -191,7 +193,7 @@ class Agent:
             # print(action)
             a = game.agent.value2action(self.actions, self.net.no_of_heads,
                                         game.lower_limit, game.upper_limit)
-            a = torch.unsqueeze(a,dim=0)
+            a = torch.unsqueeze(a, dim=0)
 
 
         else:
@@ -239,7 +241,7 @@ class Agent:
                                game.total_counter + 1)
         # if game.cycle >= game.game_cycles-2:
         #     explore_coef = self.vF.epsilon / 2
-        if game.cycle >= game.game_cycles - 1:
+        if game.cycle >= game.game_cycles - 2:
             explore_coef = -.1
         else:
             pass
@@ -250,7 +252,7 @@ class Agent:
             is_random = 1
         else:
             state = state.to(self.device)
-            self.actions = self.net(state.clone(),self.task_indicator)
+            self.actions = self.net(state.clone(), self.task_indicator)
         return self.actions.clone(), is_random
 
     def action2value(self, action, num_of_actions, lower_limit, upper_limit):
@@ -266,9 +268,14 @@ class Agent:
         action_space[idx] = 1.
         return action_space
 
-    def checkReward(self, reward, action, state, dataset, step_counter,game, lower_limit, upper_limit, std):
+    def checkReward(self, reward, action, state, dataset, step_counter, game, lower_limit, upper_limit, std):
         hair_type, skin_type, body_part = dataset.decode_input(state)
-        ref_value = torch.sum(dataset.kj_total[step_counter][body_part]) / 2
+        if game.task_id == 0.:
+            ref_value = torch.sum(dataset.kj_total[step_counter][body_part]) / 2
+        elif game.task_id == 1.:
+            ref_value = torch.sum(dataset.hz[step_counter][body_part]) / 2
+        else:
+            ref_value = torch.sum(dataset.j_cm2[step_counter][body_part]) / 2
         ref_value_min = ref_value - ref_value * std / 100
         ref_value_max = ref_value + ref_value * std / 100
         reward_factor = torch.abs(ref_value - action).item()
@@ -276,9 +283,9 @@ class Agent:
         rf = -(reward_factor + 1e-8) / abs(upper_limit - lower_limit)
         rf_0 = -(reward_factor_0 + 1e-8) / abs(upper_limit - lower_limit)
         r = 0.1
-        if game.cycle > 12:
+        if game.cycle > self.exp_over:
             # MAIN TASK -> TRAINING
-            self.task_indicator = torch.tensor([1.]).to(self.device)
+            self.task_indicator[0] = torch.tensor([1.]).to(self.device)
             if step_counter == 0:
                 self.c = not self.c
                 # print(self.counter)
@@ -289,20 +296,20 @@ class Agent:
                 r_0 = 4.
                 r_a = 6.
             if skin_type > 2 and action >= 1. or hair_type > 1 and action >= 1.:
-                reward -= r*r_0 + rf_0
+                reward -= r * r_0 + rf_0
             else:
-                reward += r*r_0 + rf_0
+                reward += r * r_0 + rf_0
                 if ref_value_min < action < ref_value_max:
-                    reward += r*r_a + rf
+                    reward += r * r_a + rf
                 else:
-                    reward -= r*r_a + rf
+                    reward -= r * r_a + rf
         else:
             # PRE-TRAINING WITH SIMPLER TASK
-            self.task_indicator = torch.tensor([0.]).to(self.device)
+            self.task_indicator[0] = torch.tensor([0.]).to(self.device)
             if ref_value_min < action < ref_value_max:
-                reward += r*10. + rf
+                reward += r * 10. + rf
             else:
-                reward -= r*10. + rf
+                reward -= r * 10. + rf
         return reward
 
     def int2binary(self, step_counter):
