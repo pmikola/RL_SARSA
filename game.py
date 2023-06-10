@@ -81,10 +81,10 @@ class Game:
                 # print(self.a_value,a_val_next)
                 # time.sleep(1)
                 # train short memory
-                self.agent.train_short_memory(self.s, self.a, self.reward, self.s_next, self.a_next, self.game_over)
+                self.agent.train_short_memory(self.s, self.a, self.reward, self.s_next, self.a_next, self.game_over,game.agent.task_indicator)
 
                 # remember
-                self.agent.remember(self.s, self.a, self.reward, self.s_next, self.a_next, self.game_over)
+                self.agent.remember(self.s, self.a, self.reward, self.s_next, self.a_next, self.game_over,game.agent.task_indicator)
 
                 step_counter += 1
                 self.total_counter += 1

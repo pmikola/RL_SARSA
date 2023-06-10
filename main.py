@@ -25,10 +25,10 @@ num_m_bits = 10
 
 no_of_states = 14  # + num_e_bits + num_m_bits
 alpha = 0.0001
-epsilon = 0.01
+epsilon = 0.025
 gamma = 0.99
 tau = 0.01
-no_of_games = 100
+no_of_games = 50
 no_of_rounds = 9
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("DEVICE: ", device)
@@ -46,27 +46,29 @@ valueFunc = ValueFunction(alpha, epsilon, gamma, tau, device, no_of_actions, v_m
 agent = Agent(net, net2, valueFunc, num_e_bits, num_m_bits, device)
 agent.BATCH_SIZE = 100
 game = Game(valueFunc, agent, device, no_of_rounds)
-game.game_cycles = 90
+game.game_cycles = 62
 game.games = no_of_games
-game.agent.exp_over = int((game.game_cycles- 3) / 3 )
+game.agent.exp_over = int((game.game_cycles- 3) / 2 )
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
 r_data = []
 a_data = []
 l_data = []
 c_map_data = []
 ax = plt.figure().gca()
-for i in range(1, game.game_cycles):
+for i in range(0, game.game_cycles):
     game.cycle = i
     rewards, a_val = game.playntrain(game, dataset, games=no_of_games)
+    print("GAME CYCLE : ", i, "\n", "REWARDS TOTAL : ", sum(rewards), "No. of RANDOM GUESSES: ",
+          game.agent.no_of_guesses)
     if game.cycle >= int(game.agent.exp_over / 3):
         game.task_id = 1.
-    if game.cycle >= int(game.agent.exp_over / 3) * 2:
+    if int(game.agent.exp_over / 3)> game.cycle >= int(game.agent.exp_over / 3) * 2:
         game.task_id = 2.
-    if game.cycle >= game.agent.exp_over:
+    if int(game.agent.exp_over / 3) * 2>game.cycle >= game.agent.exp_over:
         game.task_id = 0.
-    if game.cycle >= game.agent.exp_over + int(game.agent.exp_over / 3):
+    if game.agent.exp_over>game.cycle >= game.agent.exp_over + int(game.agent.exp_over / 3):
         game.task_id = 1.
-    if game.cycle >= game.agent.exp_over + int(game.agent.exp_over / 3) * 2:
+    if game.agent.exp_over + int(game.agent.exp_over / 3)>game.cycle >= game.agent.exp_over + int(game.agent.exp_over / 3) * 2:
         game.task_id = 2.
     if game.cycle >= game.game_cycles - 3:
         game.task_id = 0.
@@ -75,13 +77,13 @@ for i in range(1, game.game_cycles):
     if game.cycle >= game.game_cycles - 1:
         game.task_id = 2.
 
-    if game.cycle % 10 == 0:
+
+    if game.cycle % 9 == 0:
         game.agent.counter_coef = 0
     game.agent.counter_coef += 1
 
     # game.net = net
-    print("GAME CYCLE : ", i, "\n", "REWARDS TOTAL : ", sum(rewards), "No. of RANDOM GUESSES: ",
-          game.agent.no_of_guesses)
+
     r_data.append(rewards)
     a_data.append(a_val)
     l_data.append("Epoch: " + str(i))
@@ -90,7 +92,7 @@ for i in range(1, game.game_cycles):
 ax.hist(r_data, alpha=0.65, stacked=False, histtype='bar', label=l_data, color=c_map_data)
 ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 ax.legend(prop={'size': 6}, loc='upper center', bbox_to_anchor=(0.5, 1.14),
-          ncol=6, fancybox=True, shadow=True)
+          ncol=18, fancybox=True, shadow=True)
 
 plt.xlabel("Reward value per game")
 plt.ylabel("No. of games")
@@ -101,7 +103,7 @@ ay = plt.figure().gca()
 
 ay.hist(a_data, density=True, bins=40, alpha=0.65, stacked=True, histtype='stepfilled', label=l_data, color=c_map_data)
 ay.legend(prop={'size': 6}, loc='upper center', bbox_to_anchor=(0.5, 1.14),
-          ncol=6, fancybox=True, shadow=True)
+          ncol=18, fancybox=True, shadow=True)
 
 plt.xlabel("Values per game")
 plt.ylabel("No. of games")

@@ -54,15 +54,15 @@ class Agent:
         self.lossKLD = nn.KLDivLoss(reduction="batchmean", log_target=True).to(device)
         # self.loss2 = nn.MSELoss(reduction='sum').to(self.device)
 
-    def remember(self, state, action, reward, next_state, a_next, done):
-        self.memory.append((state, action, reward, next_state, a_next, done, self.MAX_PRIORITY))
+    def remember(self, state, action, reward, next_state, a_next, done,task_indicator):
+        self.memory.append((state, action, reward, next_state, a_next, done,task_indicator, self.MAX_PRIORITY))
 
-    def train_short_memory(self, state, action, reward, next_state, a_next, done):
+    def train_short_memory(self, state, action, reward, next_state, a_next, done,tid):
         if len(self.memory) > 0:
-            self.train_step(state, action, reward, next_state, a_next, done)
+            self.train_step(state, action, reward, next_state, a_next, done,tid)
 
     def prioritized_replay(self, mini_sample, no_top_k):
-        states, actions, rewards, next_states, next_actions, dones, priorities = zip(*mini_sample)
+        states, actions, rewards, next_states, next_actions, dones,tid, priorities = zip(*mini_sample)
         prio = torch.stack(list(priorities), dim=0)
         values, ind = torch.topk(prio, no_top_k)
         indexes = ind.type(torch.int64).tolist()
@@ -73,6 +73,7 @@ class Agent:
         s_next = []
         a_next = []
         d = []
+        t_id = []
         for i in indexes:
             s.append(states[i])
             a.append(actions[i])
@@ -80,7 +81,8 @@ class Agent:
             s_next.append(next_states[i])
             a_next.append(next_actions[i])
             d.append(dones[i])
-        return s, a, r, s_next, a_next, d
+            t_id.append(tid)
+        return s, a, r, s_next, a_next, d, t_id
 
     def train_long_memory(self, total_counter):
         k = 0
@@ -91,30 +93,30 @@ class Agent:
             mini_sample = random.sample(self.memory, self.BATCH_SIZE)  # list of tuples
             # mini_sample = self.memory
             # time.sleep(1)
-            s, a, r, s_next, a_next, d, p = zip(*mini_sample)
-            self.train_step(s, a, r, s_next, a_next, d)
+            s, a, r, s_next, a_next, d, tid,p = zip(*mini_sample)
+            self.train_step(s, a, r, s_next, a_next, d,tid)
         elif total_counter % 3 and len(self.memory) > self.BATCH_SIZE:
             # PRIORITY HIGH LOSS EXPERIENCE REPLAY
             if k == 1:
                 print("PRIORITY")
             mini_sample = self.memory
-            s, a, r, s_next, a_next, d = self.prioritized_replay(mini_sample, self.BATCH_SIZE)
-            self.train_step(s, a, r, s_next, a_next, d)
+            s, a, r, s_next, a_next, d,tid = self.prioritized_replay(mini_sample, self.BATCH_SIZE)
+            self.train_step(s, a, r, s_next, a_next, d,tid)
         else:
             # RANDOM REPLAY
             if len(self.memory) > self.BATCH_SIZE:
                 if k == 1:
                     print("RANDOM -> BATCH SIZE")
                 mini_sample = random.sample(self.memory, self.BATCH_SIZE)  # list of tuples
-                s, a, r, s_next, a_next, d, p = zip(*mini_sample)
-                self.train_step(s, a, r, s_next, a_next, d)
+                s, a, r, s_next, a_next, d,tid, p = zip(*mini_sample)
+                self.train_step(s, a, r, s_next, a_next, d,tid)
             else:
                 if k == 1:
                     print("MEMORY SIZE")
                 mini_sample = self.memory
-                s, a, r, s_next, a_next, d, p = zip(*mini_sample)
+                s, a, r, s_next, a_next, d,tid, p = zip(*mini_sample)
                 # time.sleep(1)
-                self.train_step(s, a, r, s_next, a_next, d)
+                self.train_step(s, a, r, s_next, a_next, d,tid)
 
     def loss2state(self, i, p, updated_experience):
         self.loss_bits = \
@@ -125,13 +127,15 @@ class Agent:
         for j in range(0, len(self.loss_bits)):
             self.memory[i][0][j] = self.loss_bits[j]
 
-    def train_step(self, s, a, r, s_next, a_next, game_over):
+    def train_step(self, s, a, r, s_next, a_next, game_over,tid):
         if len(torch.stack(list(s), dim=0).shape) == 1:
             s = torch.unsqueeze(s.clone().detach(), 0).to(self.device)
             s_next = torch.unsqueeze(s_next.clone().detach(), 0).to(self.device)
             a = torch.unsqueeze(a.clone().detach(), 0).to(self.device)
             a_next = torch.unsqueeze(a_next.clone().detach(), 0).to(self.device)
             r = torch.unsqueeze(torch.tensor(r, dtype=torch.float), 0).to(self.device)
+            tid = torch.unsqueeze(tid.clone().detach(), 0).to(self.device)
+
             game_over = (game_over,)  # tuple with only one value
         else:
             s = torch.stack(list(s), dim=0).clone().detach().to(self.device)
@@ -140,10 +144,12 @@ class Agent:
             s_next = torch.stack(list(s_next), dim=0).clone().detach().to(self.device)
 
             a_next = torch.stack(list(a_next), dim=0).clone().detach().to(self.device)
+            tid = torch.stack(list(tid), dim=0).clone().detach().to(self.device)
+
             # hn = torch.stack(list(hn), dim=0).clone().detach().to(self.device)
         # print(s)
         target, prediction = self.vF.Q_value(self.net, self.net2, s, a, r, s_next, a_next, game_over,
-                                             self.task_indicator)
+                                             tid)
         # state_a = self.net.state_dict().__str__()
 
         self.optimizer.zero_grad()
