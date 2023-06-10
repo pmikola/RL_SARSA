@@ -25,7 +25,7 @@ class NeuralNetwork(nn.Module):
         self.cx3_1 = nn.Linear(self.no_of_states * 2 + 4,self.no_of_heads, bias=True)
         self.cx3_2 = nn.Linear(self.no_of_heads, self.no_of_heads, bias=False)
 
-        self.linear1 = nn.Linear(self.no_of_states * 2, self.hidden_size * 2, bias=True)
+        self.linear1 = nn.Linear(self.no_of_states * 2 + 4, self.hidden_size * 2, bias=True)
         self.linear2 = nn.Linear(self.hidden_size * 2, self.hidden_size, bias=True)
         # self.rnn1 = nn.RNN(self.hidden_size,self.hidden_size, 1)
         self.linear3 = nn.Linear(self.hidden_size, self.no_of_heads, bias=True)
@@ -67,10 +67,14 @@ class NeuralNetwork(nn.Module):
 
         if input.dim() < 2:
             input = torch.unsqueeze(input, dim=0)
+        if task_indicator.dim() <2:
+            task_indicator = torch.unsqueeze(task_indicator, dim=0)
+
         # print(input_vector.dim())
-        ti = torch.unsqueeze(task_indicator, dim=0)
-        ti = torch.cat([ti] * input.shape[0])
-        context_input = torch.cat((input, ti), dim=1)
+        #ti = torch.unsqueeze(task_indicator, dim=0)
+        #ti = torch.cat([task_indicator] * input.shape[0])
+        #print(input.shape,task_indicator.shape)
+        context_input = torch.cat((input, task_indicator), dim=1)
         cx1 = torch.tanh(self.cx1_1(context_input))
         cx1 = F.softmax(self.cx1_2(cx1),dim=1)
         cx2 = torch.tanh(self.cx2_1(context_input))
@@ -78,7 +82,7 @@ class NeuralNetwork(nn.Module):
         cx3 = torch.tanh(self.cx3_1(context_input))
         cx3 = F.softmax(self.cx3_2(cx3),dim=1)
 
-        x = self.linear1(input)
+        x = self.linear1(context_input)
         # x = torch.tanh(x)
         x = self.kWTA(x, self.hidden_size * 2, cx1)
         x = self.linear2(x)
