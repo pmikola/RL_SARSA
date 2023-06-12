@@ -39,6 +39,7 @@ class Game:
         self.game.agent.no_of_guesses = 0.
         self.agent.net.train()
         self.games = games
+
         # self.agent.net2.train()
         self.dataset = dataset
         rewards = []
@@ -55,16 +56,18 @@ class Game:
             self.lower_limit = self.lower_limit_hz
             self.upper_limit = self.upper_limit_hz
             game.agent.task_indicator[1:4] = torch.tensor([0., 1., 0.]).to(self.device)
-            print("SETTING UP Hz",game.agent.task_indicator)
+            print("SETTING UP Hz", game.agent.task_indicator)
 
         else:
             self.lower_limit = self.lower_limit_j
             self.upper_limit = self.upper_limit_j
             game.agent.task_indicator[1:4] = torch.tensor([0., 0., 1.]).to(self.device)
-            print("SETTING UP J",game.agent.task_indicator)
+            print("SETTING UP J", game.agent.task_indicator)
         step_counter = 0
+
         for k in range(games):
             while True:
+
                 self.s, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
 
                 self.a, self.a_value, _ = self.agent.take_action(self.s, step_counter, dataset,
@@ -81,10 +84,14 @@ class Game:
                 # print(self.a_value,a_val_next)
                 # time.sleep(1)
                 # train short memory
-                self.agent.train_short_memory(self.s, self.a, self.reward, self.s_next, self.a_next, self.game_over,game.agent.task_indicator)
 
+                self.game.agent.hidden = self.agent.train_short_memory(self.s, self.a, self.reward, self.s_next,
+                                                                       self.a_next, self.game_over,
+                                                                       self.game.agent.task_indicator,
+                                                                       self.game.agent.hidden)
                 # remember
-                self.agent.remember(self.s, self.a, self.reward, self.s_next, self.a_next, self.game_over,game.agent.task_indicator)
+                self.game.agent.remember(self.s, self.a, self.reward, self.s_next, self.a_next, self.game_over,
+                                         self.game.agent.task_indicator, self.game.agent.hidden)
 
                 step_counter += 1
                 self.total_counter += 1
@@ -92,7 +99,8 @@ class Game:
                 # steps_total += 1
                 if step_counter >= self.number_of_treatments:
                     step_counter = 0
-                    self.agent.train_long_memory(self.total_counter)
+                    self.game.agent.hidden = self.agent.train_long_memory(self.total_counter)
+
                     rewards.append(self.reward)
                     a_val.append(self.a_value)
                     self.reward = 0.

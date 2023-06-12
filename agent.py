@@ -13,7 +13,7 @@ from binary_converter import float2bit
 
 
 class Agent:
-    def __init__(self, neuralNetwork, neuralNetwork2, valueFunction, num_e_bits, num_m_bits, device):
+    def __init__(self, neuralNetwork, neuralNetwork2, valueFunction, no_of_states, num_e_bits, num_m_bits, device):
         self.counter = 0
         self.counter_coef = 0
         self.exp_over = 10
@@ -22,6 +22,8 @@ class Agent:
         self.num_e_bits = num_e_bits
         self.num_m_bits = num_m_bits
         self.c = 0
+        self.no_of_states = no_of_states
+
         self.n_e_bits = torch.tensor([1.] * self.num_e_bits).to(device)
         self.n_m_bits = torch.tensor([1.] * self.num_m_bits).to(device)
         self.sign = torch.tensor([1.]).to(device)
@@ -37,9 +39,12 @@ class Agent:
         self.device = device
         self.priority = torch.tensor(self.MAX_PRIORITY, dtype=torch.float).to(
             self.device)  # Set initial priority to maximum
+        # self.hidden = torch.zeros(self.BATCH_SIZE, self.no_of_states * 2 + 4).to(self.device)
+        self.hidden = torch.FloatTensor(self.BATCH_SIZE, self.no_of_states * 2 + 4).uniform_(-0.01, 0.01).to(
+            self.device)
 
         # self.optimizer = torch.optim.SGD(self.net.parameters(), lr=0.001)
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.0001, betas=(0.9, 0.999), eps=1e-08,
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.00009, betas=(0.9, 0.999), eps=1e-08,
                                           weight_decay=0, amsgrad=True)
 
         # self.optimizer = torch.optim.RAdam(self.net.parameters(), lr=0.0001, betas=(0.9, 0.999), eps=1e-08,
@@ -54,15 +59,19 @@ class Agent:
         self.lossKLD = nn.KLDivLoss(reduction="batchmean", log_target=True).to(device)
         # self.loss2 = nn.MSELoss(reduction='sum').to(self.device)
 
-    def remember(self, state, action, reward, next_state, a_next, done,task_indicator):
-        self.memory.append((state, action, reward, next_state, a_next, done,task_indicator, self.MAX_PRIORITY))
+    def remember(self, state, action, reward, next_state, a_next, done, task_indicator, hidden):
+        self.memory.append((state, action, reward, next_state, a_next, done, task_indicator, hidden, self.MAX_PRIORITY))
 
-    def train_short_memory(self, state, action, reward, next_state, a_next, done,tid):
+    def train_short_memory(self, state, action, reward, next_state, a_next, done, tid, hidden):
+
         if len(self.memory) > 0:
-            self.train_step(state, action, reward, next_state, a_next, done,tid)
+            return self.train_step(state, action, reward, next_state, a_next, done, tid, hidden)
+        else:
+            hidden = self.hidden
+            return self.train_step(state, action, reward, next_state, a_next, done, tid, hidden)
 
     def prioritized_replay(self, mini_sample, no_top_k):
-        states, actions, rewards, next_states, next_actions, dones,tid, priorities = zip(*mini_sample)
+        states, actions, rewards, next_states, next_actions, dones, tid, hidden, priorities = zip(*mini_sample)
         prio = torch.stack(list(priorities), dim=0)
         values, ind = torch.topk(prio, no_top_k)
         indexes = ind.type(torch.int64).tolist()
@@ -74,6 +83,7 @@ class Agent:
         a_next = []
         d = []
         t_id = []
+        h = []
         for i in indexes:
             s.append(states[i])
             a.append(actions[i])
@@ -81,42 +91,44 @@ class Agent:
             s_next.append(next_states[i])
             a_next.append(next_actions[i])
             d.append(dones[i])
-            t_id.append(tid)
-        return s, a, r, s_next, a_next, d, t_id
+            t_id.append(tid[i])
+            h.append(hidden[i])
+        return s, a, r, s_next, a_next, d, t_id, h
 
     def train_long_memory(self, total_counter):
         k = 0
-        if total_counter % 2 and len(self.memory) > self.BATCH_SIZE:
+        if total_counter % 3 == 0 and len(self.memory) > self.BATCH_SIZE:
             # RANDOM REPLAY
             if k == 1:
                 print("RANDOM")
             mini_sample = random.sample(self.memory, self.BATCH_SIZE)  # list of tuples
             # mini_sample = self.memory
             # time.sleep(1)
-            s, a, r, s_next, a_next, d, tid,p = zip(*mini_sample)
-            self.train_step(s, a, r, s_next, a_next, d,tid)
-        elif total_counter % 3 and len(self.memory) > self.BATCH_SIZE:
+            s, a, r, s_next, a_next, d, tid, h, p = zip(*mini_sample)
+            hidden = self.train_step(s, a, r, s_next, a_next, d, tid, h)
+        if total_counter % 2 == 0 and len(self.memory) > self.BATCH_SIZE:
             # PRIORITY HIGH LOSS EXPERIENCE REPLAY
             if k == 1:
                 print("PRIORITY")
             mini_sample = self.memory
-            s, a, r, s_next, a_next, d,tid = self.prioritized_replay(mini_sample, self.BATCH_SIZE)
-            self.train_step(s, a, r, s_next, a_next, d,tid)
+            s, a, r, s_next, a_next, d, tid, h = self.prioritized_replay(mini_sample, self.BATCH_SIZE)
+            hidden = self.train_step(s, a, r, s_next, a_next, d, tid, h)
         else:
             # RANDOM REPLAY
             if len(self.memory) > self.BATCH_SIZE:
                 if k == 1:
                     print("RANDOM -> BATCH SIZE")
                 mini_sample = random.sample(self.memory, self.BATCH_SIZE)  # list of tuples
-                s, a, r, s_next, a_next, d,tid, p = zip(*mini_sample)
-                self.train_step(s, a, r, s_next, a_next, d,tid)
+                s, a, r, s_next, a_next, d, tid, h, p = zip(*mini_sample)
+                hidden = self.train_step(s, a, r, s_next, a_next, d, tid, h)
             else:
                 if k == 1:
                     print("MEMORY SIZE")
                 mini_sample = self.memory
-                s, a, r, s_next, a_next, d,tid, p = zip(*mini_sample)
+                s, a, r, s_next, a_next, d, tid, h, p = zip(*mini_sample)
                 # time.sleep(1)
-                self.train_step(s, a, r, s_next, a_next, d,tid)
+                hidden = self.train_step(s, a, r, s_next, a_next, d, tid, h)
+        return hidden
 
     def loss2state(self, i, p, updated_experience):
         self.loss_bits = \
@@ -127,7 +139,7 @@ class Agent:
         for j in range(0, len(self.loss_bits)):
             self.memory[i][0][j] = self.loss_bits[j]
 
-    def train_step(self, s, a, r, s_next, a_next, game_over,tid):
+    def train_step(self, s, a, r, s_next, a_next, game_over, tid, hidden):
         if len(torch.stack(list(s), dim=0).shape) == 1:
             s = torch.unsqueeze(s.clone().detach(), 0).to(self.device)
             s_next = torch.unsqueeze(s_next.clone().detach(), 0).to(self.device)
@@ -135,6 +147,8 @@ class Agent:
             a_next = torch.unsqueeze(a_next.clone().detach(), 0).to(self.device)
             r = torch.unsqueeze(torch.tensor(r, dtype=torch.float), 0).to(self.device)
             tid = torch.unsqueeze(tid.clone().detach(), 0).to(self.device)
+
+            hidden = torch.unsqueeze(hidden, 0).to(self.device)
 
             game_over = (game_over,)  # tuple with only one value
         else:
@@ -144,23 +158,28 @@ class Agent:
             s_next = torch.stack(list(s_next), dim=0).clone().detach().to(self.device)
 
             a_next = torch.stack(list(a_next), dim=0).clone().detach().to(self.device)
+            # tid = torch.stack([torch.tensor(t, device=self.device) for t in tid], dim=0).clone().detach().to(
+            # self.device)
             tid = torch.stack(list(tid), dim=0).clone().detach().to(self.device)
+            hidden = torch.stack(list(hidden), dim=0).to(self.device)
+
+            # tid = torch.stack(list(tid), dim=0).clone().detach().to(self.device)
 
             # hn = torch.stack(list(hn), dim=0).clone().detach().to(self.device)
         # print(s)
-        target, prediction = self.vF.Q_value(self.net, self.net2, s, a, r, s_next, a_next, game_over,
-                                             tid)
+        target, prediction, hidden = self.vF.Q_value(self.net, self.net2, s, a, r, s_next, a_next, game_over,
+                                                     tid, hidden)
         # state_a = self.net.state_dict().__str__()
 
         self.optimizer.zero_grad()
         # lossHubert = self.lossHubert(target, prediction)
         # lossL1 = self.lossL1(target, prediction)
-        # lossKLD = self.lossKLD(target, prediction)
+        lossKLD = self.lossKLD(target, prediction)  # slower training but better with multi-task
         lossMSE = self.lossMSE(target, prediction)
 
         # LDP is better for long term learning but MSE gives faste
         # ldp = self.vF.distributional_projection(r, target, prediction)
-        l = lossMSE  # + 0.5 * ldp
+        l = lossKLD + lossMSE  # + 0.5 * ldp
         # print(lossMain.sum().item(),ldp.sum().item())
         l.backward()
         self.optimizer.step()
@@ -173,6 +192,7 @@ class Agent:
             p = torch.max(priority)
             updated_experience = (*experience[:-1], p)
             self.memory[i] = updated_experience
+
             # LOSS AS BIT ARRAY STATE INPUT
             # self.loss2state( i, p, updated_experience)
 
@@ -190,14 +210,18 @@ class Agent:
         ###### COMPUTATIONAL GRAPH GENERATION ######
         # dot = make_dot(prediction, params=dict(self.net.named_parameters()))
         # dot.render(directory='doctest-output', view=True)
+        return hidden
 
     def take_action(self, s, step_counter, dataset, game):
         _, _, body_part = dataset.decode_input(s)
-        actions, is_random_next = self.chooseAction(s, dataset, game)
+
+        actions, h, is_random_next = self.chooseAction(s, dataset, game)
+
         if is_random_next == 1:
             self.no_of_guesses += 1
             # action = self.actions[step_counter][body_part]
             # print(action)
+
             a = game.agent.value2action(self.actions, self.net.no_of_heads,
                                         game.lower_limit, game.upper_limit)
             a = torch.unsqueeze(a, dim=0)
@@ -205,6 +229,8 @@ class Agent:
 
         else:
             a = self.actions
+            game.agent.hidden = h
+
         a_value = game.agent.action2value(a, self.net.no_of_heads, game.lower_limit, game.upper_limit)
         return a, a_value, body_part
 
@@ -244,22 +270,28 @@ class Agent:
         is_random = 0
         explore_coef = self.vF.epsilon
         hair_type, skin_type, _ = dataset.decode_input(state)
-        #c = self.vF.epsilon *  (self.counter_coef + 1)
+        # c = self.vF.epsilon *  (self.counter_coef + 1)
 
-        #print(1 / np.power(self.counter_coef, 2))
+        hidden = None
+        # print(1 / np.power(self.counter_coef, 2))
         if game.cycle >= game.game_cycles - 2:
-            explore_coef = self.counter_coef+1 * 1000.
+            explore_coef = self.counter_coef + 1 * 1000.
         else:
             pass
-        if np.random.uniform(-self.vF.epsilon, 1 / np.power(self.counter_coef+1, 2)) > explore_coef:
+        if np.random.uniform(-self.vF.epsilon, 1 / np.power(self.counter_coef + 1, 2)) > explore_coef:
             # self.actions, _, _ = dataset.create_target(200)  # For kj_total_var std
             self.actions = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
 
             is_random = 1
         else:
             state = state.to(self.device)
-            self.actions = self.net(state.clone(), self.task_indicator)
-        return self.actions.clone(), is_random
+            self.actions, hidden = self.net(state.clone(), self.task_indicator, game.agent.hidden)
+        if hidden is not None:
+            pass
+        else:
+            hidden = game.agent.hidden
+
+        return self.actions.clone(), hidden, is_random
 
     def action2value(self, action, num_of_actions, lower_limit, upper_limit):
         action_space = torch.arange(lower_limit, upper_limit, (upper_limit - lower_limit) / num_of_actions)
