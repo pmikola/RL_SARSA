@@ -12,7 +12,7 @@ from agent import Agent
 from dataset import DataSet
 from game import Game
 from valueFunction import ValueFunction
-from neuralNetwork import NeuralNetwork
+from neuralNetwork import NeuralNetwork_SA, NeuralNetwork_S
 
 # device = 'cuda' if torch.cuda.is_available() else 'cpu'
 # x = dataSet.decode_input(dataSet.create_input_set())
@@ -37,8 +37,8 @@ dataset = DataSet(device)
 torch.manual_seed(2023)
 random.seed(2023)
 np.random.seed(2023)
-net = NeuralNetwork(no_of_actions, no_of_states, device)
-net2 = NeuralNetwork(no_of_actions, no_of_states, device)
+net = NeuralNetwork_S(no_of_actions, no_of_states, device)
+net2 = NeuralNetwork_SA(no_of_actions, no_of_states, device)
 net.to(device).requires_grad_(True)
 net2.to(device).requires_grad_(True)
 valueFunc = ValueFunction(alpha, epsilon, gamma, tau, device, no_of_actions, v_min=-no_of_games * no_of_rounds,

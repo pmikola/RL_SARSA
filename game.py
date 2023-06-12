@@ -78,20 +78,19 @@ class Game:
                                                      self.std)
 
                 self.s_next, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
-                self.a_next, a_val_next, _ = self.agent.take_action(self.s_next, step_counter, dataset,
+                self.a_next, a_val_next, _ = self.agent.take_next_action(self.s_next,self.a, step_counter, dataset,
                                                                     game)
 
                 # print(self.a_value,a_val_next)
                 # time.sleep(1)
                 # train short memory
 
-                self.game.agent.hidden = self.agent.train_short_memory(self.s, self.a, self.reward, self.s_next,
+                self.agent.train_short_memory(self.s, self.a, self.reward, self.s_next,
                                                                        self.a_next, self.game_over,
-                                                                       self.game.agent.task_indicator,
-                                                                       self.game.agent.hidden)
+                                                                       self.game.agent.task_indicator,)
                 # remember
                 self.game.agent.remember(self.s, self.a, self.reward, self.s_next, self.a_next, self.game_over,
-                                         self.game.agent.task_indicator, self.game.agent.hidden)
+                                         self.game.agent.task_indicator)
 
                 step_counter += 1
                 self.total_counter += 1
@@ -99,7 +98,7 @@ class Game:
                 # steps_total += 1
                 if step_counter >= self.number_of_treatments:
                     step_counter = 0
-                    self.game.agent.hidden = self.agent.train_long_memory(self.total_counter)
+                    self.agent.train_long_memory(self.total_counter)
 
                     rewards.append(self.reward)
                     a_val.append(self.a_value)
