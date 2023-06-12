@@ -160,7 +160,7 @@ class Agent:
 
             # hn = torch.stack(list(hn), dim=0).clone().detach().to(self.device)
         # print(s)
-        target, prediction = self.vF.Q_value(self.net, self.net2, s, a, r, s_next, a_next, game_over,
+        target, prediction,prediction2 = self.vF.Q_value(self.net, self.net2, s, a, r, s_next, a_next, game_over,
                                                      tid)
         # state_a = self.net.state_dict().__str__()
 
@@ -191,12 +191,14 @@ class Agent:
 
         # state_b = self.net.state_dict().__str__()
         self.optimizer2.zero_grad()
+        #lossKLD2 = self.lossKLD(target, prediction2)  # slower training but better with multi-task
+        #lossMSE2 = self.lossMSE(target, prediction2)
         l2 = lossKLD + lossMSE
 
         l2.backward(retain_graph=True)
         self.optimizer2.step()
 
-        self.vF.soft_update(self.net, self.net2)
+        # self.vF.soft_update(self.net, self.net2)
 
         # if state_a != state_b:
         #    print("LAYERS WEIGHT SUM:", self.net.layers[0].weight.sum())
@@ -221,6 +223,24 @@ class Agent:
             a = torch.unsqueeze(a, dim=0)
 
 
+        else:
+            a = self.actions
+        a_value = game.agent.action2value(a, self.net.no_of_heads, game.lower_limit, game.upper_limit)
+        return a, a_value, body_part
+
+    def take_next_action(self, s_next,action, step_counter, dataset, game):
+        _, _, body_part = dataset.decode_input(s_next)
+
+        actions, is_random_next = self.chooseNextAction(s_next,action, dataset, game)
+
+        if is_random_next == 1:
+            self.no_of_guesses += 1
+            # action = self.actions[step_counter][body_part]
+            # print(action)
+
+            a = game.agent.value2action(self.actions, self.net.no_of_heads,
+                                        game.lower_limit, game.upper_limit)
+            a = torch.unsqueeze(a, dim=0)
         else:
             a = self.actions
         a_value = game.agent.action2value(a, self.net.no_of_heads, game.lower_limit, game.upper_limit)
@@ -263,8 +283,6 @@ class Agent:
         explore_coef = self.vF.epsilon
         hair_type, skin_type, _ = dataset.decode_input(state)
         # c = self.vF.epsilon *  (self.counter_coef + 1)
-
-
         # print(1 / np.power(self.counter_coef, 2))
         if game.cycle >= game.game_cycles - 2:
             explore_coef = self.counter_coef + 1 * 1000.
@@ -278,6 +296,27 @@ class Agent:
         else:
             state = state.to(self.device)
             self.actions = self.net(state.clone(), self.task_indicator)
+        return self.actions.clone(), is_random
+
+    def chooseNextAction(self, state_next,action, dataset, game):
+        is_random = 0
+        explore_coef = self.vF.epsilon
+        hair_type, skin_type, _ = dataset.decode_input(state_next)
+        # c = self.vF.epsilon *  (self.counter_coef + 1)
+        # print(1 / np.power(self.counter_coef, 2))
+        if game.cycle >= game.game_cycles - 2:
+            explore_coef = self.counter_coef + 1 * 1000.
+        else:
+            pass
+        if np.random.uniform(-self.vF.epsilon, 1 / np.power(self.counter_coef + 1, 2)) > explore_coef:
+            # self.actions, _, _ = dataset.create_target(200)  # For kj_total_var std
+            self.actions = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
+
+            is_random = 1
+        else:
+            state_next = state_next.to(self.device)
+            action = action.to(self.device)
+            self.actions = self.net2(state_next.clone(),action.clone(), self.task_indicator)
         return self.actions.clone(), is_random
 
     def action2value(self, action, num_of_actions, lower_limit, upper_limit):

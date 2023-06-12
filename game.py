@@ -78,7 +78,7 @@ class Game:
                                                      self.std)
 
                 self.s_next, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
-                self.a_next, a_val_next, _ = self.agent.take_action(self.s_next, step_counter, dataset,
+                self.a_next, a_val_next, _ = self.agent.take_next_action(self.s_next,self.a, step_counter, dataset,
                                                                     game)
 
                 # print(self.a_value,a_val_next)
