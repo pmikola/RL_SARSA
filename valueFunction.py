@@ -17,10 +17,10 @@ class ValueFunction:
         self.tau = tau
         self.n_steps = n_steps
 
-    def Q_value(self, net, net2, s, a, r, s_next, a_next, game_over,task_indicator):
-        Q = net(s,task_indicator)
+    def Q_value(self, net, net2, s, a, r, s_next, a_next, game_over,task_indicator,hidden):
+        Q,hidden = net(s,task_indicator,hidden)
         # Calculate Q-values using the main network
-        Q_main = net(s_next,task_indicator).detach()
+        Q_main,hidden = net(s_next,task_indicator,hidden).detach()
         Q_target = Q.clone()
 
         for idx in range(len(game_over)):
@@ -39,7 +39,7 @@ class ValueFunction:
             current_action_idx = torch.argmax(a[idx]).item()
             Q_target[idx][current_action_idx] = Q_new
 
-        return Q_target, Q
+        return Q_target, Q,hidden
 
     def soft_update(self, net, target_net):
         for target_param, param in zip(target_net.parameters(), net.parameters()):
