@@ -20,9 +20,6 @@ class NeuralNetwork(nn.Module):
 
         # self.conv1 = nn.Conv1d(in_channels=self.no_of_states * 2 + 4, out_channels=self.no_of_states * 2 + 4,
         #                        kernel_size=3, padding=1)
-
-        self.rnn1 = nn.RNN(1, 200, self.no_of_states * 2 + 4, self.no_of_states * 2 + 4, batch_first=True)
-
         # CONTEXT LAYERS - k-Winner learning (hebbian learning0
         self.cx1_1 = nn.Linear(self.no_of_states * 2 + 4, self.hidden_size * 2, bias=True)
         self.cx1_2 = nn.Linear(self.hidden_size * 2, self.hidden_size * 2, bias=True)
@@ -75,7 +72,7 @@ class NeuralNetwork(nn.Module):
             # kWTA[i][top_k_ind_min] = 0.
         return kWTA
 
-    def forward(self, input, task_indicator, hidden):
+    def forward(self, input, task_indicator):
         # x = torch.cat((x,x))
         # x = torch.flatten(x)
         if input.dim() < 2:
@@ -85,18 +82,8 @@ class NeuralNetwork(nn.Module):
 
         # LIN VS SOFTMAX VS SIGMOID VS RELU ON OUTPUT
         context_input = torch.cat((input, task_indicator), dim=1)
-        # print(self.hidden.shape,context_input.shape)
-        # if hidden is not None:
-        # h = hidden.transpose(0, 1).contiguous()
-        h = hidden
-        # h = torch.squeeze(hidden)
-        # h = torch.swapaxes(context_input, 1, 0)
-        print("hidden 1", h.shape)
 
-        print("context input", context_input.shape)
-        context_input, next_hidden = self.rnn1(context_input, h)
-        next_hidden = next_hidden.transpose(0, 1).contiguous()
-        print("next hidden", next_hidden.shape)
+        # print("context input 2", context_input.shape)
         cx1 = torch.tanh(self.cx1_1(context_input))
         cx1 = F.softmax(self.cx1_2(cx1), dim=1)
         cx2 = torch.tanh(self.cx2_1(context_input))
@@ -106,6 +93,8 @@ class NeuralNetwork(nn.Module):
 
         x = self.linear1(context_input)
         # x = torch.tanh(x)
+
+
         x = self.kWTA(x, self.hidden_size * 2, cx1)
         x = self.linear2(x)
 
@@ -117,4 +106,4 @@ class NeuralNetwork(nn.Module):
         x = self.kWTA(x, self.no_of_heads, cx3)
         x = self.linear4(x)
         output = x
-        return output, next_hidden
+        return output
