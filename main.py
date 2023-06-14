@@ -25,7 +25,7 @@ num_m_bits = 10
 
 no_of_states = 14  # + num_e_bits + num_m_bits
 alpha = 0.0001
-epsilon = 0.0235
+epsilon = 0.012
 gamma = 0.99
 tau = 0.01
 no_of_games = 50
@@ -43,24 +43,33 @@ net.to(device).requires_grad_(True)
 net2.to(device).requires_grad_(True)
 valueFunc = ValueFunction(alpha, epsilon, gamma, tau, device, no_of_actions, v_min=-no_of_games * no_of_rounds,
                           v_max=no_of_games * no_of_rounds)
-agent = Agent(net, net2, valueFunc,no_of_states, num_e_bits, num_m_bits, device)
+agent = Agent(net, net2, valueFunc, no_of_states, num_e_bits, num_m_bits, device)
 agent.BATCH_SIZE = 100
 
 game = Game(valueFunc, agent, device, no_of_rounds)
 game.game_cycles = 63
 game.games = no_of_games
-game.agent.exp_over = int((game.game_cycles- 3) / 2 )
+game.agent.exp_over = int((game.game_cycles - 3) / 2)
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
 r_data = []
 a_data = []
 l_data = []
+loss = []
 c_map_data = []
+total_time = 0.
 ax = plt.figure().gca()
-for i in range(1, game.game_cycles+1):
+for i in range(1, game.game_cycles + 1):
     game.cycle = i
-    rewards, a_val = game.playntrain(game, dataset, games=no_of_games)
-    print("GAME CYCLE : ", i, "\n", "REWARDS TOTAL : ", sum(rewards), "No. of RANDOM GUESSES: ",
+    start = time.time()
+    print("GAME CYCLE : ", i)
+    rewards, a_val, losses = game.playntrain(game, dataset, games=no_of_games)
+    print("  REWARDS TOTAL : ", sum(rewards), " ||  RANDOM GUESSES: ",
           game.agent.no_of_guesses)
+    end = time.time()
+    t = end - start
+    total_time += t
+    print("  Elapsed time : ", t, " [s]")
+    print("----------------------------------")
     if game.cycle >= int(game.agent.exp_over / 3):
         game.task_id = 1.
     if game.cycle >= int(game.agent.exp_over / 3) * 2:
@@ -78,7 +87,6 @@ for i in range(1, game.game_cycles+1):
     if game.cycle >= game.game_cycles - 1:
         game.task_id = 2.
 
-
     if game.cycle % 10 == 0:
         game.agent.counter_coef = 0
     game.agent.counter_coef += 1
@@ -89,6 +97,9 @@ for i in range(1, game.game_cycles+1):
     a_data.append(a_val)
     l_data.append("Epoch: " + str(i))
     c_map_data.append(cmap(i))
+    loss.append(losses)
+
+print("Total time : ", total_time / 60, "[min]")
 
 ax.hist(r_data, alpha=0.65, stacked=False, histtype='bar', label=l_data, color=c_map_data)
 ax.xaxis.set_major_locator(MaxNLocator(integer=True))
@@ -117,5 +128,14 @@ az.plot(rewars_total)
 
 plt.xlabel("No. Games")
 plt.ylabel("Rewards")
+plt.grid()
+plt.show()
+
+b = plt.figure().gca()
+loss_total = np.array(sum(loss, [])) / no_of_rounds
+b.plot(loss_total)
+
+plt.xlabel("No. Games")
+plt.ylabel("loss")
 plt.grid()
 plt.show()

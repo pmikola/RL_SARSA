@@ -8,6 +8,9 @@ import torch.optim as optim
 # POLICY ARCHITECTURE
 from torch import Tensor
 
+LOG_SIG_MAX = 2
+LOG_SIG_MIN = -5
+
 
 class NeuralNetwork_S(nn.Module):
     def __init__(self, no_of_heads, no_of_states, device):
@@ -22,17 +25,27 @@ class NeuralNetwork_S(nn.Module):
         #                        kernel_size=3, padding=1)
         # CONTEXT LAYERS - k-Winner learning (hebbian learning0
         self.input = self.no_of_states * 2 + 4
-        self.cx1_1 = nn.Linear(self.input, self.hidden_size * 2, bias=True)
+        self.hidden_state = self.input + self.hidden_size
+
+        self.cx1_1 = nn.Linear(4, self.hidden_size * 2, bias=True)
         self.cx1_2 = nn.Linear(self.hidden_size * 2, self.hidden_size * 2, bias=True)
-        self.cx2_1 = nn.Linear(self.input, self.hidden_size, bias=True)
+        self.cx2_1 = nn.Linear(4, self.hidden_size, bias=True)
         self.cx2_2 = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
-        self.cx3_1 = nn.Linear(self.input, self.no_of_heads, bias=True)
+        self.cx3_1 = nn.Linear(4, self.no_of_heads, bias=True)
         self.cx3_2 = nn.Linear(self.no_of_heads, self.no_of_heads, bias=True)
 
-        self.linear1 = nn.Linear(self.input, self.hidden_size * 2, bias=True)
-        self.linear2 = nn.Linear(self.hidden_size * 2, self.hidden_size, bias=True)
-        self.linear3 = nn.Linear(self.hidden_size, self.no_of_heads, bias=True)
-        self.linear4 = nn.Linear(self.no_of_heads, self.no_of_heads, bias=True)
+        self.inhibit1_1 = nn.Linear(4, self.hidden_size * 2, bias=True)
+        self.inhibit1_2 = nn.Linear(self.hidden_size * 2, 4, bias=True)
+        self.inhibit2_1 = nn.Linear(4, self.hidden_size * 2, bias=True)
+        self.inhibit2_2 = nn.Linear(self.hidden_size * 2, 4, bias=True)
+        self.inhibit3_1 = nn.Linear(4, self.hidden_size * 2, bias=True)
+        self.inhibit3_2 = nn.Linear(self.hidden_size * 2, 4, bias=True)
+
+        self.linear1 = nn.Linear(self.input, self.hidden_size * 4, bias=True)
+        self.linear2 = nn.Linear(self.hidden_size * 4, self.hidden_size*2, bias=True)
+        self.linear3 = nn.Linear(self.hidden_size*2, self.hidden_size*2, bias=True)
+        self.linear4 = nn.Linear(self.hidden_size*2, self.hidden_size, bias=True)
+        self.linear5 = nn.Linear(self.hidden_size, self.no_of_heads, bias=True)
 
         self._init_weights(nn.Module)
         for param in self.parameters():
@@ -47,14 +60,15 @@ class NeuralNetwork_S(nn.Module):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
 
-    def kWTA(self, input_vector, no_neurons, k_winers):
+    def kWTA(self, input_vector, k_winers, inhibiton):
+        no_neurons = input_vector.shape[1]
+
         # kWTA = torch.full((input_vector.shape[0], no_neurons),0.01).to(self.device) # Inhibition  <- clipping weights
         # kWTA = torch.randn(input_vector.shape[0], no_neurons).to(self.device) # Inhibition
-        # kWTA = torch.FloatTensor(input_vector.shape[0], no_neurons).uniform_(-0.01, 0.01).to(self.device)  # ok
+        # kWTA = torch.FloatTensor(input_vector.shape[0], no_neurons).uniform_(-1 / inhibition_strength,1 / inhibition_strength).to(self.device)  # ok
 
-        inhibition_coefs = 3.
-        kWTA = input_vector / inhibition_coefs  # simple inhibition -> best so far
-
+        # inhibition_coefs = inhibition_strength
+        kWTA = input_vector
         # Inhibition so far <- uniform clipping weights in range
         for i in range(0, input_vector.shape[0]):
             # k = k_winers[i] * no_neurons # FOR SINGLE SIGMOID OUTPUT
@@ -62,8 +76,13 @@ class NeuralNetwork_S(nn.Module):
             # print(k)
             top_k_val_max, top_k_ind_max = torch.topk(input_vector[i], k.int().item(), largest=True, sorted=False)
             # top_k_val_min, top_k_ind_min = torch.topk(input_vector[i], k.int().item(), largest=False, sorted=False)
-
             # Unchanged top-k values for gradient calculation (backprop)
+            # print(kWTA[i].shape,input_vector.shape[1],inhibiton[i].shape,i)
+            inhibition_strength = torch.argmax(inhibiton[i]).int().item() + 1
+            # inhibition_strength = inhibition_strength*0.5
+            kWTA[i] = kWTA[
+                          i] / inhibition_strength  # torch.FloatTensor(input_vector.shape[1]).uniform_(-1 / inhibition_strength, 1 / inhibition_strength).to(
+            # self.device)
             kWTA[i][top_k_ind_max] = top_k_val_max
 
             # zeroing min values and not doing backprop gradient calc of those neuron conections
@@ -80,27 +99,34 @@ class NeuralNetwork_S(nn.Module):
         context_input = torch.cat((state, task_indicator), dim=1)
 
         # print("context state 2", context_input.shape)
-        cx1 = torch.tanh(self.cx1_1(context_input))
-        cx1 = F.softmax(self.cx1_2(cx1), dim=1)
-        cx2 = torch.tanh(self.cx2_1(context_input))
-        cx2 = F.softmax(self.cx2_2(cx2), dim=1)
-        cx3 = torch.tanh(self.cx3_1(context_input))
-        cx3 = F.softmax(self.cx3_2(cx3), dim=1)
-
-        x = self.linear1(context_input)
-        # x = torch.tanh(x)
-        # x = torch.cat((x, context_input), dim=1)
-        x = self.kWTA(x, self.hidden_size * 2, cx1)
-
-        x = self.linear2(x)
-        # x = torch.cat((x, context_input), dim=1)
-        x = self.kWTA(x, self.hidden_size, cx2)
-
+        # cx1 = torch.tanh(self.cx1_1(task_indicator))
+        # cx1 = F.softmax(self.cx1_2(cx1), dim=1)
+        # cx2 = torch.tanh(self.cx2_1(task_indicator))
+        # cx2 = F.softmax(self.cx2_2(cx2), dim=1)
+        # cx3 = torch.tanh(self.cx3_1(task_indicator))
+        # cx3 = F.softmax(self.cx3_2(cx3), dim=1)
         #
-        x = self.linear3(x)
-        x = self.kWTA(x, self.no_of_heads, cx3)
+        # inhibition1 = torch.tanh(self.inhibit1_1(task_indicator))
+        # inhibition1 = F.softmax(self.inhibit1_2(inhibition1), dim=1)
+        # inhibition2 = torch.tanh(self.inhibit2_1(task_indicator))
+        # inhibition2 = F.softmax(self.inhibit2_2(inhibition2), dim=1)
+        # inhibition3 = torch.tanh(self.inhibit3_1(task_indicator))
+        # inhibition3 = F.softmax(self.inhibit3_2(inhibition3), dim=1)
 
-        x = self.linear4(x)
+        x = torch.relu(self.linear1(context_input))
+        #x = self.kWTA(x, cx1, inhibition1)
+
+        # x = torch.cat((x, context_input), dim=1)
+        x = torch.relu(self.linear2(x))
+        #x = self.kWTA(x, cx2, inhibition2)
+
+        # x = torch.cat((x, context_input), dim=1)
+        x = torch.relu(self.linear3(x))
+        #x = self.kWTA(x, cx3, inhibition3)
+
+        x = torch.relu(self.linear4(x))
+
+        x = self.linear5(x)
         output = x
         return output
 
@@ -118,6 +144,15 @@ class NeuralNetwork_SA(nn.Module):
         #                        kernel_size=3, padding=1)
         # CONTEXT LAYERS - k-Winner learning (hebbian learning0
         self.input = self.no_of_states * 2 + 4 + self.no_of_heads
+        self.hidden_state_action = self.input + self.hidden_size
+
+        self.inhibit1_1 = nn.Linear(self.input, self.hidden_size * 2, bias=True)
+        self.inhibit1_2 = nn.Linear(self.hidden_size * 2, 4, bias=True)
+        self.inhibit2_1 = nn.Linear(self.input, self.hidden_size * 2, bias=True)
+        self.inhibit2_2 = nn.Linear(self.hidden_size * 2, 4, bias=True)
+        self.inhibit3_1 = nn.Linear(self.input, self.hidden_size * 2, bias=True)
+        self.inhibit3_2 = nn.Linear(self.hidden_size * 2, 4, bias=True)
+
         self.cx1_1 = nn.Linear(self.input, self.hidden_size * 2, bias=True)
         self.cx1_2 = nn.Linear(self.hidden_size * 2, self.hidden_size * 2, bias=True)
         self.cx2_1 = nn.Linear(self.input, self.hidden_size, bias=True)
@@ -143,22 +178,29 @@ class NeuralNetwork_SA(nn.Module):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
 
-    def kWTA(self, input_vector, no_neurons, k_winers):
+    def kWTA(self, input_vector, k_winers, inhibiton):
+        no_neurons = input_vector.shape[1]
+        # inhibition_strength = torch.argmax(inhibiton).int().item() + 1
         # kWTA = torch.full((input_vector.shape[0], no_neurons),0.01).to(self.device) # Inhibition  <- clipping weights
         # kWTA = torch.randn(input_vector.shape[0], no_neurons).to(self.device) # Inhibition
-        # kWTA = torch.FloatTensor(input_vector.shape[0], no_neurons).uniform_(-0.01, 0.01).to(self.device)  # ok
+        # kWTA = torch.FloatTensor(input_vector.shape[0], no_neurons).uniform_(-1 / inhibition_strength,1 / inhibition_strength).to(self.device)  # ok
 
-        inhibition_coefs = 3.
-        kWTA = input_vector / inhibition_coefs  # simple inhibition -> best so far
-
+        # inhibition_coefs = inhibition_strength
+        kWTA = input_vector
         # Inhibition so far <- uniform clipping weights in range
+
         for i in range(0, input_vector.shape[0]):
             # k = k_winers[i] * no_neurons # FOR SINGLE SIGMOID OUTPUT
             k = torch.argmax(k_winers[i])  # FOR SOFTMAX OR DENSE OUTPUT
             # print(k)
             top_k_val_max, top_k_ind_max = torch.topk(input_vector[i], k.int().item(), largest=True, sorted=False)
             # top_k_val_min, top_k_ind_min = torch.topk(input_vector[i], k.int().item(), largest=False, sorted=False)
-
+            inhibition_strength = torch.argmax(inhibiton[i]).int().item() + 1
+            # inhibition_strength = inhibition_strength * 0.5
+            kWTA[i] = kWTA[
+                          i] / inhibition_strength  # torch.FloatTensor(input_vector.shape[1]).uniform_(-1 / inhibition_strength,
+            # 1 / inhibition_strength).to(
+            # self.device)
             # Unchanged top-k values for gradient calculation (backprop)
             kWTA[i][top_k_ind_max] = top_k_val_max
 
@@ -173,15 +215,15 @@ class NeuralNetwork_SA(nn.Module):
         if action.dim() < 2:
             action = torch.unsqueeze(action, dim=0)
         elif action.dim() == 3:
-            action = torch.swapaxes(action,0,1)
+            action = torch.swapaxes(action, 0, 1)
             action = torch.squeeze(action, dim=0)
         if task_indicator.dim() < 2:
             task_indicator = torch.unsqueeze(task_indicator, dim=0)
 
         # LIN VS SOFTMAX VS SIGMOID VS RELU ON OUTPUT
-        #print(action.shape, state.shape, task_indicator.shape)
+        # print(action.shape, state.shape, task_indicator.shape)
         context_input = torch.cat((state, task_indicator), dim=1)
-        context_input = torch.cat((context_input,action), dim=1)
+        context_input = torch.cat((context_input, action), dim=1)
 
         # print("context state 2", context_input.shape)
         cx1 = torch.tanh(self.cx1_1(context_input))
@@ -191,18 +233,23 @@ class NeuralNetwork_SA(nn.Module):
         cx3 = torch.tanh(self.cx3_1(context_input))
         cx3 = F.softmax(self.cx3_2(cx3), dim=1)
 
+        inhibition1 = torch.tanh(self.inhibit1_1(context_input))
+        inhibition1 = F.softmax(self.inhibit1_2(inhibition1), dim=1)
+        inhibition2 = torch.tanh(self.inhibit2_1(context_input))
+        inhibition2 = F.softmax(self.inhibit2_2(inhibition2), dim=1)
+        inhibition3 = torch.tanh(self.inhibit3_1(context_input))
+        inhibition3 = F.softmax(self.inhibit3_2(inhibition3), dim=1)
+
         x = self.linear1(context_input)
-        # x = torch.tanh(x)
-        # x = torch.cat((x, context_input), dim=1)
-        x = self.kWTA(x, self.hidden_size * 2, cx1)
+        x = self.kWTA(x, cx1, inhibition1)
 
+        # x = torch.cat((x, context_input), dim=1)
         x = self.linear2(x)
-        # x = torch.cat((x, context_input), dim=1)
-        x = self.kWTA(x, self.hidden_size, cx2)
+        x = self.kWTA(x, cx2, inhibition2)
 
-        #
+        # x = torch.cat((x, context_input), dim=1)
         x = self.linear3(x)
-        x = self.kWTA(x, self.no_of_heads, cx3)
+        x = self.kWTA(x, cx3, inhibition3)
 
         x = self.linear4(x)
         output = x
