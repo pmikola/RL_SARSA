@@ -136,7 +136,7 @@ class Agent:
         for j in range(0, len(self.loss_bits)):
             self.memory[i][0][j] = self.loss_bits[j]
 
-    def train_step(self, s, a, r, s_next, a_next, game_over, tid,ad_reward):
+    def train_step(self, s, a, r, s_next, a_next, game_over, tid, ad_reward):
         if len(torch.stack(list(s), dim=0).shape) == 1:
             s = torch.unsqueeze(s.clone().detach(), 0).to(self.device)
             s_next = torch.unsqueeze(s_next.clone().detach(), 0).to(self.device)
@@ -163,18 +163,18 @@ class Agent:
             # hn = torch.stack(list(hn), dim=0).clone().detach().to(self.device)
         # print(s)
         target, prediction, prediction2 = self.vF.Q_value(self.net, self.net2, s, a, r, s_next, a_next, game_over,
-                                                          tid,ad_reward)
+                                                          tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
 
         self.optimizer.zero_grad()
-        # lossHubert = self.lossHubert(target, prediction)
+        lossHubert = self.lossHubert(target, prediction)  # BEST LOSS
         # lossL1 = self.lossL1(target, prediction)
-        #lossKLD = self.lossKLD(target, prediction)  # slower training but better with multi-task
-        lossMSE = self.lossMSE(target, prediction)
+        # lossKLD = self.lossKLD(target, prediction)  # slower training but better with multi-task
+        # lossMSE = self.lossMSE(target, prediction)
 
         # LDP is better for long term learning but MSE gives faste
         # ldp = self.vF.distributional_projection(r, target, prediction)
-        l = lossMSE#lossKLD + lossMSE  # + 0.5 * ldp
+        l = lossHubert  # lossKLD + lossMSE  # + 0.5 * ldp
         # print(lossMain.sum().item(),ldp.sum().item())
         l.backward()
         self.optimizer.step()
@@ -350,8 +350,8 @@ class Agent:
         ref_value_max = ref_value + ref_value * std / 100
         reward_factor = torch.abs(ref_value - action).item()
         reward_factor_0 = torch.abs(0. - action).item()
-        #rf = -(reward_factor + 1e-8) / abs(upper_limit - lower_limit)
-        #rf_0 = -(reward_factor_0 + 1e-8) / abs(upper_limit - lower_limit)
+        rf = -(reward_factor + 1e-8) / abs(upper_limit - lower_limit)
+        rf_0 = -(reward_factor_0 + 1e-8) / abs(upper_limit - lower_limit)
         r = 0.1
         additional_reward = 0.
         if game.cycle > self.exp_over:
@@ -367,15 +367,16 @@ class Agent:
                 r_0 = 4.
                 r_a = 6.
             if skin_type > 2 and action >= 1. or hair_type > 1 and action >= 1.:
-                reward -= 0.  # r * r_0 + rf_0
+                reward -= r * r_0 + rf_0
+                # additional_reward -= 1.
             else:
-                #reward += r * r_0  # + rf_0
+                reward += r * r_0 + rf_0
                 additional_reward += 1.
                 if ref_value_min < action < ref_value_max:
-                    reward += r * 10.#r * r_a  # + rf
+                    reward += r * r_a  # + rf
                 else:
                     # ommiting negarive rewards better regarding Q value without mean/sum estimate??
-                    reward -= 0.  # r * r_a #+ rf
+                    reward -= r * r_a #+ rf
         else:
             # PRE-TRAINING WITH SIMPLER TASK
             self.task_indicator[0] = torch.tensor([0.]).to(self.device)
@@ -384,6 +385,9 @@ class Agent:
             else:
                 reward -= 0.  # r * 10. #+ rf
         # print(reward)
+
+        if step_counter == 8 and reward == 5:
+            additional_reward = 1.
         if step_counter == 8 and reward == 6:
             additional_reward = 2.5
         if step_counter == 8 and reward == 7:
