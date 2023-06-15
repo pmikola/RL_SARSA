@@ -8,6 +8,7 @@ from torch import nn
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import torch.nn.functional as F
 from torchviz import make_dot
+from scipy.stats import invgauss, wald
 
 from binary_converter import float2bit
 
@@ -168,6 +169,7 @@ class Agent:
 
         self.optimizer.zero_grad()
         lossHubert = self.lossHubert(target, prediction)  # BEST LOSS
+        # lossHubert_sum = self.lossHubert(target.sum(), prediction.sum())
         # lossL1 = self.lossL1(target, prediction)
         # lossKLD = self.lossKLD(target, prediction)  # slower training but better with multi-task
         # lossMSE = self.lossMSE(target, prediction)
@@ -178,6 +180,8 @@ class Agent:
         # print(lossMain.sum().item(),ldp.sum().item())
         l.backward()
         self.optimizer.step()
+        # lossHubert_sum.backward(retain_graph=True)
+        # self.optimizer.step()
         # Update priorities
         abs_td_errors = torch.abs(target - prediction).detach()  # Magnitude of our TD error
         priorities = abs_td_errors + 1e-8  # Add small constant to avoid zero priority
@@ -313,8 +317,13 @@ class Agent:
             pass
         if np.random.uniform(-self.vF.epsilon, 1 / np.power(self.counter_coef + 1, 2)) > explore_coef:
             # self.actions, _, _ = dataset.create_target(200)  # For kj_total_var std
-            self.actions = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
-
+            #self.actions = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit)).to(self.device)
+            self.act = np.random.uniform(-1., 1.)
+            mean = (game.lower_limit + game.upper_limit) / 2
+            # self.actions = torch.tensor(invgauss.rvs(mean, size=1)).to(self.device)
+            # self.actions = torch.tensor(wald.rvs(mean, size=1)).to(self.device)
+            self.actions = torch.tensor(np.arcsin(self.act)*mean + mean).to(self.device)
+            # print(self.actions)
             is_random = 1
         else:
             state_next = state_next.to(self.device)
@@ -350,8 +359,9 @@ class Agent:
         ref_value_max = ref_value + ref_value * std / 100
         reward_factor = torch.abs(ref_value - action).item()
         reward_factor_0 = torch.abs(0. - action).item()
-        rf = -(reward_factor + 1e-8) / abs(upper_limit - lower_limit)
-        rf_0 = -(reward_factor_0 + 1e-8) / abs(upper_limit - lower_limit)
+        # print(action)
+        # rf = -(reward_factor + 1e-8) / abs(upper_limit - lower_limit)
+        # rf_0 = -(reward_factor_0 + 1e-8) / abs(upper_limit - lower_limit)
         r = 0.1
         additional_reward = 0.
         if game.cycle > self.exp_over:
@@ -361,22 +371,22 @@ class Agent:
                 self.c = not self.c
                 # print(self.counter)
             if self.c == 1:
-                r_0 = 6.
-                r_a = 4.
+                r_0 = 5.
+                r_a = 5.
             else:
-                r_0 = 4.
-                r_a = 6.
-            if skin_type > 2 and action >= 1. or hair_type > 1 and action >= 1.:
-                reward -= r * r_0 + rf_0
-                # additional_reward -= 1.
+                r_0 = 5.
+                r_a = 5.
+            if skin_type > 2 or hair_type > 1:
+                if action >= 1.:
+                    reward -= 0.  # r * r_0  # + rf_0
+                else:
+                    reward += 1.  # r * r_0
             else:
-                reward += r * r_0 + rf_0
-                additional_reward += 1.
                 if ref_value_min < action < ref_value_max:
-                    reward += r * r_a  # + rf
+                    reward += 1.  # r * r_a  # + rf
                 else:
                     # ommiting negarive rewards better regarding Q value without mean/sum estimate??
-                    reward -= r * r_a #+ rf
+                    reward -= 0.  # r * r_a  # + rf
         else:
             # PRE-TRAINING WITH SIMPLER TASK
             self.task_indicator[0] = torch.tensor([0.]).to(self.device)
@@ -386,17 +396,17 @@ class Agent:
                 reward -= 0.  # r * 10. #+ rf
         # print(reward)
 
-        if step_counter == 8 and reward == 5:
+        if step_counter == 8 and reward >= 5:
             additional_reward = 1.
-        if step_counter == 8 and reward == 6:
+        if step_counter == 8 and reward >= 6:
             additional_reward = 2.5
-        if step_counter == 8 and reward == 7:
+        if step_counter == 8 and reward >= 7:
             additional_reward = 5.
-        if step_counter == 8 and reward == 8:
+        if step_counter == 8 and reward >= 8:
             additional_reward = 10.
-        if step_counter == 8 and reward == 9:
+        if step_counter == 8 and reward >= 9:
             print("maximum reward!")
-            additional_reward = 20.
+            additional_reward = 25.
         return reward, additional_reward
 
     def int2binary(self, step_counter):
