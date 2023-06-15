@@ -78,15 +78,7 @@ class NeuralNetwork_S(nn.Module):
         for i in range(0, input_vector.shape[0]):
             # k = k_winers[i] * no_neurons # FOR SINGLE SIGMOID OUTPUT
             k = torch.argmax(k_winers[i])  # FOR SOFTMAX OR DENSE OUTPUT
-            # print(k)
             top_k_val_max, top_k_ind_max = torch.topk(input_vector[i], k.int().item(), largest=True, sorted=False)
-            # top_k_val_min, top_k_ind_min = torch.topk(input_vector[i], k.int().item(), largest=False, sorted=False)
-            # Unchanged top-k values for gradient calculation (backprop)
-            # print(kWTA[i].shape,input_vector.shape[1],inhibiton[i].shape,i)
-            # inhibition_strength = torch.argmax(inhibiton[i]).int().item() + 1
-            # inhibition_strength = inhibition_strength*0.5
-            # kWTA[i] = kWTA[i] / inhibition_strength  # torch.FloatTensor(input_vector.shape[1]).uniform_(-1 / inhibition_strength, 1 / inhibition_strength).to(
-            # self.device)
             kWTA[i][top_k_ind_max] = top_k_val_max
 
             # zeroing min values and not doing backprop gradient calc of those neuron conections

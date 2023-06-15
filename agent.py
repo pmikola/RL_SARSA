@@ -253,7 +253,7 @@ class Agent:
         a_value = game.agent.action2value(a, self.net.no_of_heads, game.lower_limit, game.upper_limit)
         return a, a_value, body_part
 
-    def get_state(self, step_counter, dataset):
+    def get_state(self, pain, step_counter, dataset):
         turn = self.int2binary(step_counter).to(self.device)
         patient = dataset.create_input_set().to(self.device)
         if step_counter >= 9:
@@ -264,7 +264,7 @@ class Agent:
             game_over = False
         # s = torch.cat((patient, turn, done, self.n_e_bits, self.n_m_bits), axis=0)
 
-        s = torch.cat((patient, turn, done), dim=0)
+        s = torch.cat((patient, turn, pain, done), dim=0)
         s = torch.cat((s, s), dim=0)
         # print(s)
         return s, done, game_over
@@ -317,13 +317,7 @@ class Agent:
             pass
         if np.random.uniform(-self.vF.epsilon, 1 / np.power(self.counter_coef + 1, 2)) > explore_coef:
             # self.actions, _, _ = dataset.create_target(200)  # For kj_total_var std
-            #self.actions = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit)).to(self.device)
-            self.act = np.random.uniform(-1., 1.)
-            mean = (game.lower_limit + game.upper_limit) / 2
-            # self.actions = torch.tensor(invgauss.rvs(mean, size=1)).to(self.device)
-            # self.actions = torch.tensor(wald.rvs(mean, size=1)).to(self.device)
-            self.actions = torch.tensor(np.arcsin(self.act)*mean + mean).to(self.device)
-            # print(self.actions)
+            self.actions = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit)).to(self.device)
             is_random = 1
         else:
             state_next = state_next.to(self.device)
@@ -360,7 +354,7 @@ class Agent:
         reward_factor = torch.abs(ref_value - action).item()
         reward_factor_0 = torch.abs(0. - action).item()
         # print(action)
-        # rf = -(reward_factor + 1e-8) / abs(upper_limit - lower_limit)
+        rf = -(reward_factor + 1e-8) / abs(upper_limit - lower_limit)
         # rf_0 = -(reward_factor_0 + 1e-8) / abs(upper_limit - lower_limit)
         r = 0.1
         additional_reward = 0.
@@ -371,19 +365,19 @@ class Agent:
                 self.c = not self.c
                 # print(self.counter)
             if self.c == 1:
-                r_0 = 5.
-                r_a = 5.
+                r_0 = 10.
+                r_a = 10.
             else:
-                r_0 = 5.
-                r_a = 5.
+                r_0 = 10.
+                r_a = 10.
             if skin_type > 2 or hair_type > 1:
                 if action >= 1.:
-                    reward -= 0.  # r * r_0  # + rf_0
+                    reward -= 0.
                 else:
-                    reward += 1.  # r * r_0
+                    reward += r * r_0
             else:
                 if ref_value_min < action < ref_value_max:
-                    reward += 1.  # r * r_a  # + rf
+                    reward += r * r_a  # + rf
                 else:
                     # ommiting negarive rewards better regarding Q value without mean/sum estimate??
                     reward -= 0.  # r * r_a  # + rf
