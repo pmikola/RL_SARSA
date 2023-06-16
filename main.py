@@ -47,7 +47,7 @@ agent = Agent(net, net2, valueFunc, no_of_states, num_e_bits, num_m_bits, device
 agent.BATCH_SIZE = 100
 
 game = Game(valueFunc, agent, device, no_of_rounds)
-game.game_cycles = 63
+game.game_cycles = 72
 game.games = no_of_games
 game.agent.exp_over = int((game.game_cycles - 3) / 2)
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
@@ -80,12 +80,15 @@ for i in range(1, game.game_cycles + 1):
         game.task_id = 1.
     if game.cycle >= game.agent.exp_over + int(game.agent.exp_over / 3) * 2:
         game.task_id = 2.
-    if game.cycle >= game.game_cycles - 3:
+    if game.cycle >= game.game_cycles - 12:
         game.task_id = 0.
-    if game.cycle >= game.game_cycles - 2:
+        game.valueFunction.epsilon = 1.
+    if game.cycle >= game.game_cycles - 8:
         game.task_id = 1.
-    if game.cycle >= game.game_cycles - 1:
+        game.valueFunction.epsilon = 1.
+    if game.cycle >= game.game_cycles - 4:
         game.task_id = 2.
+        game.valueFunction.epsilon = 1.
 
     if game.cycle % 10 == 0:
         game.agent.counter_coef = 0

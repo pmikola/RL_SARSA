@@ -68,11 +68,14 @@ class Game:
         step_counter = 0
 
         for k in range(games):
+            self.pain = torch.tensor([0])
             while True:
-                self.s, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
+                self.s, self.done, self.game_over = self.agent.get_state(self.pain,step_counter, dataset)
 
                 self.a, self.a_value, _ = self.agent.take_action(self.s, step_counter, dataset,
                                                                  game)
+
+                self.pain = torch.randint(0, 1, (1,))
 
                 self.reward,self.ad_reward = self.agent.checkReward(self.reward, self.a_value, self.s, self.dataset, step_counter,
                                                      game, self.lower_limit, self.upper_limit,
@@ -82,9 +85,7 @@ class Game:
                 self.a_next, a_val_next, _ = self.agent.take_next_action(self.s_next, self.a, step_counter, dataset,
                                                                          game)
 
-                # print(self.a_value,a_val_next)
-                # time.sleep(1)
-                # train short memory
+
 
                 l = self.agent.train_short_memory(self.s, self.a, self.reward, self.s_next,
                                                   self.a_next, self.game_over,
