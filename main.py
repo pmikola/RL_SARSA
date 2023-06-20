@@ -55,6 +55,7 @@ r_data = []
 a_data = []
 l_data = []
 loss = []
+p_pain = []
 c_map_data = []
 total_time = 0.
 ax = plt.figure().gca()
@@ -63,7 +64,7 @@ for i in range(1, game.game_cycles + 1):
     game.cycle = i
     start = time.time()
     print("GAME CYCLE : ", i)
-    rewards, a_val, losses = game.playntrain(game, dataset, games=no_of_games)
+    rewards, a_val, losses,pains = game.playntrain(game, dataset, games=no_of_games)
     print("  REWARDS TOTAL : ", sum(rewards), " ||  RANDOM GUESSES: ",
           game.agent.no_of_guesses)
     end = time.time()
@@ -99,6 +100,7 @@ for i in range(1, game.game_cycles + 1):
 
     r_data.append(rewards)
     a_data.append(a_val)
+    p_pain.append(pains)
     l_data.append("Epoch: " + str(i))
     c_map_data.append(cmap(i))
     loss.append(losses)
@@ -135,11 +137,20 @@ plt.ylabel("Rewards")
 plt.grid()
 plt.show()
 
-b = plt.figure().gca()
+ba = plt.figure().gca()
 loss_total = np.array(sum(loss, [])) / no_of_rounds
-b.plot(loss_total)
+ba.plot(loss_total)
 
 plt.xlabel("No. Games")
 plt.ylabel("loss")
+plt.grid()
+plt.show()
+
+bb = plt.figure().gca()
+pain_total = np.array(sum(p_pain, [])) / no_of_rounds
+bb.plot(pain_total)
+
+plt.xlabel("No. Games")
+plt.ylabel("Pain Level")
 plt.grid()
 plt.show()

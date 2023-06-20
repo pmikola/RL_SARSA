@@ -342,7 +342,7 @@ class Agent:
         return action_space
 
     def checkRewardAndModBehavior(self, reward, action, state, dataset, step_counter, game, lower_limit, upper_limit,
-                                  std, pain, pain_p):
+                                  std, pain, pain_p, n_samples):
         hair_type, skin_type, body_part = dataset.decode_input(state)
         self.task_indicator[0] = torch.tensor([1.]).to(self.device)
         r = 0.1
@@ -365,16 +365,6 @@ class Agent:
         # rf = -(reward_factor + 1e-8) / abs(upper_limit - lower_limit)
         # rf_0 = -(reward_factor_0 + 1e-8) / abs(upper_limit - lower_limit)
 
-        if self.last_pain is None:
-            self.last_pain = pain
-        else:
-            if self.last_pain[step_counter - 1] >= pain[step_counter] and game.task_id != 0:
-                additional_reward += 0.5
-            if (self.last_pain[step_counter - 1] + 1e-8) / 2 >= pain[step_counter] and game.task_id != 0:
-                additional_reward += 2
-            if pain[step_counter] <= 0.05 and game.task_id != 0:
-                additional_reward += 3
-
         if step_counter == 0:
             self.c = not self.c
             # print(self.counter)
@@ -384,41 +374,50 @@ class Agent:
         else:
             r_0 = 10.
             r_a = 10.
+
         if skin_type > 2 or hair_type > 1:
             if action >= 1.:
                 reward -= 0.
             else:
                 reward += r * r_0
         else:
-            if pain[step_counter] >= self.last_pain[step_counter - 1] and game.task_id != 0 and step_counter >= 1:
-                if ref_value_min - rf_vl < action < ref_value_max - rf_vl:
-                    reward += r * r_a  # + rf
-                    pain_p = 1. - pain[step_counter].cpu()
-                    print("last",pain_p)
-                else:
-                    # ommiting negarive rewards better regarding Q value without mean/sum estimate??
-                    reward -= 0.  # r * r_a  # + rf
-            elif pain[step_counter] >= 0.25 and game.task_id != 0:
-                if ref_value_min - rf_vl < action < ref_value_max - rf_vl:
-                    reward += r * r_a  # + rf
-                    pain_p = 1. - pain[step_counter].cpu()
-                    print("first",pain_p)
-                else:
-                    # ommiting negarive rewards better regarding Q value without mean/sum estimate??
-                    reward -= 0.  # r * r_a  # + rf
+            if game.task_id != 0:
+                pain_level = 1. - sum(np.random.binomial(1, pain_p, n_samples) == 0) / float(
+                    n_samples)
+                pain[step_counter] = torch.Tensor(np.array(pain_level)).to(self.device)
             else:
+                # PAIN MATRIX IS 0 COZ WE DOSNT CHANGE kJ value -> only hz or j_cm2
+                pass
+            if pain[step_counter] <= 0.1:
                 if ref_value_min < action < ref_value_max:
                     reward += r * r_a  # + rf
+            elif pain[step_counter] > 0.1:
+                if step_counter == 0:
+                    if ref_value_min - rf_vl*2 < action < ref_value_max - rf_vl*2:
+                        reward += r * r_a  # + rf
+                        pain_p = pain_p / 2
                 else:
-                    # ommiting negarive rewards better regarding Q value without mean/sum estimate??
-                    reward -= 0.  # r * r_a  # + rf
+                    if pain[step_counter] >= self.last_pain[step_counter - 1]:
+                        if ref_value_min - rf_vl*2 < action < ref_value_max - rf_vl*2:
+                            reward += r * r_a  # + rf
+                            pain_p = pain_p / 2
+                    else:
+                        if ref_value_min < action < ref_value_max:
+                            reward += r * r_a  # + rf
+                            pain_p = pain_p / 2
+            #print(pain[step_counter])
+
+        if self.last_pain is None:
+            self.last_pain = pain
+        else:
+            pass
 
         if step_counter == 8:
             del self.last_pain
             self.last_pain = None
         else:
             self.last_pain[step_counter] = pain[step_counter]
-            self.in_a_row_reward = 0.
+            # self.in_a_row_reward = 0.
         if step_counter == 8 and reward >= 5:
             additional_reward += 1.
 
@@ -435,7 +434,7 @@ class Agent:
             print("  maximum reward!")
             additional_reward += 15.  # + self.in_a_row_reward  # 25
 
-        return reward, additional_reward, pain_p
+        return reward, additional_reward,pain, pain_p
 
     def int2binary(self, step_counter):
         bin = list(map(float, f'{step_counter:04b}'))

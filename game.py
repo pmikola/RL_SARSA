@@ -52,6 +52,7 @@ class Game:
         rewards = []
         a_val = []
         losses = []
+        pain = []
         # self.total_counter = 0.
         self.task_id = game.task_id
         if self.task_id == 0.:
@@ -76,23 +77,23 @@ class Game:
         for k in range(games):
             self.pain_p = np.random.random_sample()
             self.n_samples = 1000
-            self.pain = torch.tensor([0., 0., 0., 0., 0., 0., 0., 0., 0.]).to(self.device)
+            if game.task_id != 0:
+                self.pain = torch.tensor([self.pain_p, 0., 0., 0., 0., 0., 0., 0., 0.]).to(self.device)
+            else:
+                self.pain = torch.tensor([0., 0., 0., 0., 0., 0., 0., 0., 0.]).to(self.device)
+
             while True:
                 self.s, self.done, self.game_over = self.agent.get_state(self.pain, step_counter, dataset)
 
                 self.a, self.a_value, _ = self.agent.take_action(self.s, step_counter, dataset,
                                                                  game)
 
-                ###### EVALUATE PAIN ########
-                pain_level = sum(np.random.binomial(1, self.pain_p, self.n_samples) == 0) / float(self.n_samples)
 
-                self.pain[step_counter] = torch.Tensor(np.array(pain_level)).to(self.device)
-                ###### EVALUATE PAIN ########
 
-                self.reward, self.ad_reward,self.pain_p = self.agent.checkRewardAndModBehavior(self.reward, self.a_value, self.s, self.dataset,
+                self.reward, self.ad_reward,self.pain,self.pain_p = self.agent.checkRewardAndModBehavior(self.reward, self.a_value, self.s, self.dataset,
                                                                      step_counter,
                                                                      game, self.lower_limit, self.upper_limit,
-                                                                     self.std, self.pain,self.pain_p)
+                                                                     self.std, self.pain,self.pain_p,self.n_samples)
 
                 # print("p_lvl : ",pain_level,"p :",self.pain_p,step_counter)
                 self.s_next, self.done, self.game_over = self.agent.get_state(self.pain, step_counter, dataset)
@@ -116,6 +117,7 @@ class Game:
                     losses.append(l)
                     rewards.append(self.reward)
                     a_val.append(self.a_value)
+                    pain.append((torch.sum(self.pain)).cpu())
                     self.reward = 0.
                     break
-        return rewards, a_val, losses
+        return rewards, a_val, losses,pain
