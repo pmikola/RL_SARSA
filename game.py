@@ -1,4 +1,6 @@
 import time
+
+import numpy
 import numpy as np
 import torch
 from torch import nn
@@ -6,6 +8,10 @@ from torch import nn
 
 class Game:
     def __init__(self, valueFunction, agent, device, no_of_rounds):
+
+        self.pain = None
+        self.pain_p = None
+        self.n_samples = None
         self.ad_reward = None
         self.reward = 0.
         self.laser_params = None
@@ -68,31 +74,37 @@ class Game:
         step_counter = 0
 
         for k in range(games):
-            self.pain = torch.tensor([0])
+            self.pain_p = np.random.random_sample()
+            self.n_samples = 1000
+            self.pain = torch.tensor([0., 0., 0., 0., 0., 0., 0., 0., 0.]).to(self.device)
             while True:
-                self.s, self.done, self.game_over = self.agent.get_state(self.pain,step_counter, dataset)
+                self.s, self.done, self.game_over = self.agent.get_state(self.pain, step_counter, dataset)
 
                 self.a, self.a_value, _ = self.agent.take_action(self.s, step_counter, dataset,
                                                                  game)
 
-                self.pain = torch.randint(0, 1, (1,))
+                ###### EVALUATE PAIN ########
+                pain_level = sum(np.random.binomial(1, self.pain_p, self.n_samples) == 0) / float(self.n_samples)
 
-                self.reward,self.ad_reward = self.agent.checkReward(self.reward, self.a_value, self.s, self.dataset, step_counter,
-                                                     game, self.lower_limit, self.upper_limit,
-                                                     self.std)
+                self.pain[step_counter] = torch.Tensor(np.array(pain_level)).to(self.device)
+                ###### EVALUATE PAIN ########
 
-                self.s_next, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
+                self.reward, self.ad_reward,self.pain_p = self.agent.checkRewardAndModBehavior(self.reward, self.a_value, self.s, self.dataset,
+                                                                     step_counter,
+                                                                     game, self.lower_limit, self.upper_limit,
+                                                                     self.std, self.pain,self.pain_p)
+
+                # print("p_lvl : ",pain_level,"p :",self.pain_p,step_counter)
+                self.s_next, self.done, self.game_over = self.agent.get_state(self.pain, step_counter, dataset)
                 self.a_next, a_val_next, _ = self.agent.take_next_action(self.s_next, self.a, step_counter, dataset,
                                                                          game)
 
-
-
                 l = self.agent.train_short_memory(self.s, self.a, self.reward, self.s_next,
                                                   self.a_next, self.game_over,
-                                                  self.game.agent.task_indicator,self.ad_reward)
+                                                  self.game.agent.task_indicator, self.ad_reward)
                 # remember
                 self.game.agent.remember(self.s, self.a, self.reward, self.s_next, self.a_next, self.game_over,
-                                         self.game.agent.task_indicator,self.ad_reward)
+                                         self.game.agent.task_indicator, self.ad_reward)
 
                 step_counter += 1
                 self.total_counter += 1
@@ -106,4 +118,4 @@ class Game:
                     a_val.append(self.a_value)
                     self.reward = 0.
                     break
-        return rewards, a_val,losses
+        return rewards, a_val, losses

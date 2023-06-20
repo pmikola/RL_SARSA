@@ -8,13 +8,12 @@ import torch.optim as optim
 # POLICY ARCHITECTURE
 from torch import Tensor
 
-LOG_SIG_MAX = 2
-LOG_SIG_MIN = -5
 
 
-class NeuralNetwork_S(nn.Module):
+
+class Q_Network(nn.Module):
     def __init__(self, no_of_heads, no_of_states, device):
-        super(NeuralNetwork_S, self).__init__()
+        super(Q_Network, self).__init__()
 
         self.no_of_heads = no_of_heads
         self.no_of_states = no_of_states
@@ -132,9 +131,9 @@ class NeuralNetwork_S(nn.Module):
         return output
 
 
-class NeuralNetwork_SA(nn.Module):
+class Policy_Network(nn.Module):
     def __init__(self, no_of_heads, no_of_states, device):
-        super(NeuralNetwork_SA, self).__init__()
+        super(Policy_Network, self).__init__()
 
         self.no_of_heads = no_of_heads
         self.no_of_states = no_of_states
@@ -147,24 +146,29 @@ class NeuralNetwork_SA(nn.Module):
         self.input = self.no_of_states * 2 + 4 + self.no_of_heads
         self.hidden_state_action = self.input + self.hidden_size
 
-        self.inhibit1_1 = nn.Linear(self.input, self.hidden_size * 2, bias=True)
-        self.inhibit1_2 = nn.Linear(self.hidden_size * 2, 4, bias=True)
-        self.inhibit2_1 = nn.Linear(self.input, self.hidden_size * 2, bias=True)
-        self.inhibit2_2 = nn.Linear(self.hidden_size * 2, 4, bias=True)
-        self.inhibit3_1 = nn.Linear(self.input, self.hidden_size * 2, bias=True)
-        self.inhibit3_2 = nn.Linear(self.hidden_size * 2, 4, bias=True)
-
-        self.cx1_1 = nn.Linear(self.input, self.hidden_size * 2, bias=True)
+        self.cx1_1 = nn.Linear(4, self.hidden_size * 2, bias=True)
         self.cx1_2 = nn.Linear(self.hidden_size * 2, self.hidden_size * 2, bias=True)
-        self.cx2_1 = nn.Linear(self.input, self.hidden_size, bias=True)
-        self.cx2_2 = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
-        self.cx3_1 = nn.Linear(self.input, self.no_of_heads, bias=True)
-        self.cx3_2 = nn.Linear(self.no_of_heads, self.no_of_heads, bias=True)
+        self.cx2_1 = nn.Linear(4, self.hidden_size * 2, bias=True)
+        self.cx2_2 = nn.Linear(self.hidden_size * 2, self.hidden_size * 2, bias=True)
+        self.cx3_1 = nn.Linear(4, self.hidden_size, bias=True)
+        self.cx3_2 = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
+        self.cx4_1 = nn.Linear(4, self.no_of_heads, bias=True)
+        self.cx4_2 = nn.Linear(self.no_of_heads, self.no_of_heads, bias=True)
 
-        self.linear1 = nn.Linear(self.input, self.hidden_size * 2, bias=True)
-        self.linear2 = nn.Linear(self.hidden_size * 2, self.hidden_size, bias=True)
-        self.linear3 = nn.Linear(self.hidden_size, self.no_of_heads, bias=True)
-        self.linear4 = nn.Linear(self.no_of_heads, self.no_of_heads, bias=True)
+        self.inhibit1_1 = nn.Linear(4, self.hidden_size * 2, bias=True)
+        self.inhibit1_2 = nn.Linear(self.hidden_size * 2, 4, bias=True)
+        self.inhibit2_1 = nn.Linear(4, self.hidden_size * 2, bias=True)
+        self.inhibit2_2 = nn.Linear(self.hidden_size * 2, 4, bias=True)
+        self.inhibit3_1 = nn.Linear(4, self.hidden_size * 2, bias=True)
+        self.inhibit3_2 = nn.Linear(self.hidden_size * 2, 4, bias=True)
+        self.inhibit4_1 = nn.Linear(4, self.hidden_size * 2, bias=True)
+        self.inhibit4_2 = nn.Linear(self.hidden_size * 2, 4, bias=True)
+
+        self.linear1 = nn.Linear(self.input, self.hidden_size * 4, bias=True)
+        self.linear2 = nn.Linear(self.hidden_size * 4 + self.input, self.hidden_size * 2, bias=True)
+        self.linear3 = nn.Linear(self.hidden_size * 2 + self.input, self.hidden_size * 2, bias=True)
+        self.linear4 = nn.Linear(self.hidden_size * 2 + self.input, self.hidden_size, bias=True)
+        self.linear5 = nn.Linear(self.hidden_size, self.no_of_heads, bias=True)
 
         self._init_weights(nn.Module)
         for param in self.parameters():
@@ -179,7 +183,7 @@ class NeuralNetwork_SA(nn.Module):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
 
-    def kWTA(self, input_vector, k_winers, inhibiton):
+    def kWTA(self, input_vector, k_winers):
         no_neurons = input_vector.shape[1]
         # inhibition_strength = torch.argmax(inhibiton).int().item() + 1
         # kWTA = torch.full((input_vector.shape[0], no_neurons),0.01).to(self.device) # Inhibition  <- clipping weights
@@ -196,10 +200,10 @@ class NeuralNetwork_SA(nn.Module):
             # print(k)
             top_k_val_max, top_k_ind_max = torch.topk(input_vector[i], k.int().item(), largest=True, sorted=False)
             # top_k_val_min, top_k_ind_min = torch.topk(input_vector[i], k.int().item(), largest=False, sorted=False)
-            inhibition_strength = torch.argmax(inhibiton[i]).int().item() + 1
+            #inhibition_strength = torch.argmax(inhibiton[i]).int().item() + 1
             # inhibition_strength = inhibition_strength * 0.5
-            kWTA[i] = kWTA[
-                          i] / inhibition_strength  # torch.FloatTensor(input_vector.shape[1]).uniform_(-1 / inhibition_strength,
+            #kWTA[i] = kWTA[
+            #              i] / inhibition_strength  # torch.FloatTensor(input_vector.shape[1]).uniform_(-1 / inhibition_strength,
             # 1 / inhibition_strength).to(
             # self.device)
             # Unchanged top-k values for gradient calculation (backprop)
@@ -227,31 +231,39 @@ class NeuralNetwork_SA(nn.Module):
         context_input = torch.cat((context_input, action), dim=1)
 
         # print("context state 2", context_input.shape)
-        cx1 = torch.tanh(self.cx1_1(context_input))
-        cx1 = F.softmax(self.cx1_2(cx1), dim=1)
-        cx2 = torch.tanh(self.cx2_1(context_input))
-        cx2 = F.softmax(self.cx2_2(cx2), dim=1)
-        cx3 = torch.tanh(self.cx3_1(context_input))
-        cx3 = F.softmax(self.cx3_2(cx3), dim=1)
+        cx1 = torch.tanh(self.cx1_1(task_indicator))
+        cx1 = self.cx1_2(cx1)
+        cx2 = torch.tanh(self.cx2_1(task_indicator))
+        cx2 = self.cx2_2(cx2)
+        cx3 = torch.tanh(self.cx3_1(task_indicator))
+        cx3 = self.cx3_2(cx3)
+        cx4 = torch.tanh(self.cx4_1(task_indicator))
+        cx4 = self.cx4_2(cx4)
 
-        inhibition1 = torch.tanh(self.inhibit1_1(context_input))
-        inhibition1 = F.softmax(self.inhibit1_2(inhibition1), dim=1)
-        inhibition2 = torch.tanh(self.inhibit2_1(context_input))
-        inhibition2 = F.softmax(self.inhibit2_2(inhibition2), dim=1)
-        inhibition3 = torch.tanh(self.inhibit3_1(context_input))
-        inhibition3 = F.softmax(self.inhibit3_2(inhibition3), dim=1)
+        # inhibition1 = torch.tanh(self.inhibit1_1(task_indicator))
+        # inhibition1 = F.softmax(self.inhibit1_2(inhibition1), dim=1)
+        # inhibition2 = torch.tanh(self.inhibit2_1(task_indicator))
+        # inhibition2 = F.softmax(self.inhibit2_2(inhibition2), dim=1)
+        # inhibition3 = torch.tanh(self.inhibit3_1(task_indicator))
+        # inhibition3 = F.softmax(self.inhibit3_2(inhibition3), dim=1)
+        # inhibition4 = torch.tanh(self.inhibit4_1(task_indicator))
+        # inhibition4 = F.softmax(self.inhibit4_2(inhibition4), dim=1)
 
         x = self.linear1(context_input)
-        x = self.kWTA(x, cx1, inhibition1)
+        x = self.kWTA(x, cx1)
 
-        # x = torch.cat((x, context_input), dim=1)
+        x = torch.cat((x, context_input), dim=1)
         x = self.linear2(x)
-        x = self.kWTA(x, cx2, inhibition2)
+        x = self.kWTA(x, cx2)
 
-        # x = torch.cat((x, context_input), dim=1)
+        x = torch.cat((x, context_input), dim=1)
         x = self.linear3(x)
-        x = self.kWTA(x, cx3, inhibition3)
+        x = self.kWTA(x, cx3)
 
+        x = torch.cat((x, context_input), dim=1)
         x = self.linear4(x)
+        x = self.kWTA(x, cx4)
+        x = self.linear5(x)
         output = x
         return output
+

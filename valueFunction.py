@@ -21,18 +21,19 @@ class ValueFunction:
     def Q_value(self, net, net2, s, a, r, s_next, a_next, game_over, task_indicator, ad_reward):
         Q = net(s, task_indicator)
         # Calculate Q-values using the main network
-        # Q_main = net2(s_next,a,task_indicator)
-        Q_main = net(s_next, task_indicator)
-        Q_target = Q.clone()
+        policy = net2(s_next, a, task_indicator)
+        # Q_main = net(s_next, task_indicator)
+        Q_target = Q.clone() + 1.  # <- optimistic bias
 
         for idx in range(len(game_over)):
             Q_new = r[idx] + ad_reward[idx]
+
             current_action_idx = torch.argmax(a[idx]).item()
             if not game_over[idx]:
                 # Indexing Q-main using max value position from next action give us SARS(A)
                 next_action_idx = torch.argmax(a_next[idx]).item()
                 Q_new += self.alpha * (
-                        (r[idx] + ad_reward[idx]) + self.gamma * Q_main[idx][next_action_idx])
+                        (r[idx] + ad_reward[idx]) + self.gamma * policy[idx][next_action_idx])
                 # Multi-step return -> looking ahead of choosing path by n steps
                 for step in range(1, self.n_steps):
                     if idx + step < len(game_over):
@@ -40,7 +41,32 @@ class ValueFunction:
 
             Q_target[idx][current_action_idx] = Q_new
 
-        return Q_target, Q, Q_main
+        return Q_target, Q, policy
+
+    def policy(self, net, net2, s, a, r, s_next, a_next, game_over, task_indicator, ad_reward):
+        Q = net(s, task_indicator)
+        # Calculate Q-values using the main network
+        policy = net2(s_next, a, task_indicator)
+        # Q_main = net(s_next, task_indicator)
+        policy_target = policy.clone() + 1.  # <- optimistic bias
+
+        for idx in range(len(game_over)):
+            Q_new = r[idx] + ad_reward[idx]
+
+            current_action_idx = torch.argmax(a[idx]).item()
+            if not game_over[idx]:
+                # Indexing Q-main using max value position from next action give us SARS(A)
+                next_action_idx = torch.argmax(a_next[idx]).item()
+                Q_new += self.alpha * (
+                        (r[idx] + ad_reward[idx]) + self.gamma * Q[idx][next_action_idx])
+                # Multi-step return -> looking ahead of choosing path by n steps
+                for step in range(1, self.n_steps):
+                    if idx + step < len(game_over):
+                        Q_new += (self.gamma ** step) * (r[idx + step] + ad_reward[idx + step])
+
+            policy_target[idx][current_action_idx] = Q_new
+
+        return policy_target, Q, policy
 
     def soft_update(self, net, target_net):
         for target_param, param in zip(target_net.parameters(), net.parameters()):

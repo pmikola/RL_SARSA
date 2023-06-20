@@ -14,22 +14,23 @@ from binary_converter import float2bit
 
 
 class Agent:
-    def __init__(self, neuralNetwork, neuralNetwork2, valueFunction, no_of_states, num_e_bits, num_m_bits, device):
+    def __init__(self, Q_Network, Policy_Network, valueFunction, no_of_states, num_e_bits, num_m_bits, device):
+        self.last_pain = None
         self.counter = 0
         self.counter_coef = 0
         self.exp_over = 10
-        self.net = neuralNetwork
-        self.net2 = neuralNetwork2
+        self.net = Q_Network
+        self.net2 = Policy_Network
         self.num_e_bits = num_e_bits
         self.num_m_bits = num_m_bits
         self.c = 0
         self.no_of_states = no_of_states
-
+        self.in_a_row_reward = 0.
         self.n_e_bits = torch.tensor([1.] * self.num_e_bits).to(device)
         self.n_m_bits = torch.tensor([1.] * self.num_m_bits).to(device)
         self.sign = torch.tensor([1.]).to(device)
         self.no_of_guesses = 0.
-        self.task_indicator = torch.tensor([0., 0., 0., 0.]).to(device)
+        self.task_indicator = torch.tensor([1., 0., 0., 0.]).to(device)
         print(self.net)
         print(self.net2)
         self.BATCH_SIZE = 200
@@ -42,13 +43,13 @@ class Agent:
             self.device)  # Set initial priority to maximum
 
         # self.optimizer = torch.optim.SGD(self.net.parameters(), lr=0.001)
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.00005, betas=(0.9, 0.999), eps=1e-08,
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.0001, betas=(0.9, 0.999), eps=1e-08,
                                           weight_decay=0, amsgrad=True)
 
         # self.optimizer = torch.optim.RAdam(self.net.parameters(), lr=0.0001, betas=(0.9, 0.999), eps=1e-08,
         #                                    weight_decay=0)
-        self.optimizer2 = torch.optim.Adam(self.net2.parameters(), lr=0.00005, betas=(0.9, 0.999), eps=1e-08,
-                                           weight_decay=5e-3, amsgrad=True)
+        self.optimizer2 = torch.optim.Adam(self.net2.parameters(), lr=0.0001, betas=(0.9, 0.999), eps=1e-08,
+                                           weight_decay=0, amsgrad=True)
 
         self.Q_MAX = 0.
         self.lossMSE = nn.MSELoss().to(self.device)
@@ -178,7 +179,7 @@ class Agent:
         # ldp = self.vF.distributional_projection(r, target, prediction)
         l = lossHubert  # lossKLD + lossMSE  # + 0.5 * ldp
         # print(lossMain.sum().item(),ldp.sum().item())
-        l.backward()
+        l.backward(retain_graph=True)
         self.optimizer.step()
         # lossHubert_sum.backward(retain_graph=True)
         # self.optimizer.step()
@@ -196,13 +197,14 @@ class Agent:
             # self.loss2state( i, p, updated_experience)
 
         # state_b = self.net.state_dict().__str__()
-        # self.optimizer2.zero_grad()
-        # lossKLD2 = self.lossKLD(target, prediction)  # slower training but better with multi-task
-        # lossMSE2 = self.lossMSE(target, prediction)
-        # l2 = lossKLD + lossMSE
+        target, prediction, prediction2 = self.vF.policy(self.net, self.net2, s, a, r, s_next, a_next, game_over,
+                                                         tid, ad_reward)
+        self.optimizer2.zero_grad()
+        lossHubert2 = self.lossHubert(target, prediction2)
+        l2 = lossHubert2
 
-        # l.backward(retain_graph=True)
-        # self.optimizer2.step()
+        l2.backward(retain_graph=True)
+        self.optimizer2.step()
 
         # self.vF.soft_update(self.net, self.net2)
 
@@ -264,7 +266,7 @@ class Agent:
             game_over = False
         # s = torch.cat((patient, turn, done, self.n_e_bits, self.n_m_bits), axis=0)
 
-        s = torch.cat((patient, turn, pain, done), dim=0)
+        s = torch.cat((patient, turn, done, pain), dim=0)
         s = torch.cat((s, s), dim=0)
         # print(s)
         return s, done, game_over
@@ -298,7 +300,6 @@ class Agent:
         if np.random.uniform(-self.vF.epsilon, 1 / np.power(self.counter_coef + 1, 2)) > explore_coef:
             # self.actions, _, _ = dataset.create_target(200)  # For kj_total_var std
             self.actions = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
-
             is_random = 1
         else:
             state = state.to(self.device)
@@ -322,8 +323,8 @@ class Agent:
         else:
             state_next = state_next.to(self.device)
             action = action.to(self.device)
-            # self.actions = self.net2(state_next.clone(), action.clone(), self.task_indicator)
-            self.actions = self.net(state_next.clone(), self.task_indicator)
+            self.actions = self.net2(state_next.clone(), action.clone(), self.task_indicator)
+            # self.actions = self.net(state_next.clone(), self.task_indicator)
 
         return self.actions.clone(), is_random
 
@@ -340,68 +341,101 @@ class Agent:
         action_space[idx] = 1.
         return action_space
 
-    def checkReward(self, reward, action, state, dataset, step_counter, game, lower_limit, upper_limit, std):
+    def checkRewardAndModBehavior(self, reward, action, state, dataset, step_counter, game, lower_limit, upper_limit,
+                                  std, pain, pain_p):
         hair_type, skin_type, body_part = dataset.decode_input(state)
-
-        if game.task_id == 0.:
-            ref_value = torch.sum(dataset.kj_total[step_counter][body_part]) / 2
-        elif game.task_id == 1.:
-            ref_value = torch.sum(dataset.hz[step_counter][body_part]) / 2
-        else:
-            ref_value = torch.sum(dataset.j_cm2[step_counter][body_part]) / 2
-        ref_value_min = ref_value - ref_value * std / 100
-        ref_value_max = ref_value + ref_value * std / 100
-        reward_factor = torch.abs(ref_value - action).item()
-        reward_factor_0 = torch.abs(0. - action).item()
-        # print(action)
-        rf = -(reward_factor + 1e-8) / abs(upper_limit - lower_limit)
-        # rf_0 = -(reward_factor_0 + 1e-8) / abs(upper_limit - lower_limit)
+        self.task_indicator[0] = torch.tensor([1.]).to(self.device)
         r = 0.1
         additional_reward = 0.
-        if game.cycle > self.exp_over:
-            # MAIN TASK -> TRAINING
-            self.task_indicator[0] = torch.tensor([1.]).to(self.device)
-            if step_counter == 0:
-                self.c = not self.c
-                # print(self.counter)
-            if self.c == 1:
-                r_0 = 10.
-                r_a = 10.
+        if game.task_id == 0.:
+            r_v = dataset.kj_total[step_counter][body_part]
+            ref_value = torch.sum(r_v) / 2
+        elif game.task_id == 1.:
+            r_v = dataset.hz[step_counter][body_part]
+            ref_value = torch.sum(r_v) / 2
+        else:
+            r_v = dataset.j_cm2[step_counter][body_part]
+            ref_value = torch.sum(r_v) / 2
+        rf_vl = ref_value * std / 100
+        ref_value_min = ref_value - rf_vl
+        ref_value_max = ref_value + rf_vl
+        # reward_factor = torch.abs(ref_value - action).item()
+        # reward_factor_0 = torch.abs(0. - action).item()
+        # print(action)
+        # rf = -(reward_factor + 1e-8) / abs(upper_limit - lower_limit)
+        # rf_0 = -(reward_factor_0 + 1e-8) / abs(upper_limit - lower_limit)
+
+        if self.last_pain is None:
+            self.last_pain = pain
+        else:
+            if self.last_pain[step_counter - 1] >= pain[step_counter] and game.task_id != 0:
+                additional_reward += 0.5
+            if (self.last_pain[step_counter - 1] + 1e-8) / 2 >= pain[step_counter] and game.task_id != 0:
+                additional_reward += 2
+            if pain[step_counter] <= 0.05 and game.task_id != 0:
+                additional_reward += 3
+
+        if step_counter == 0:
+            self.c = not self.c
+            # print(self.counter)
+        if self.c == 1:
+            r_0 = 10.
+            r_a = 10.
+        else:
+            r_0 = 10.
+            r_a = 10.
+        if skin_type > 2 or hair_type > 1:
+            if action >= 1.:
+                reward -= 0.
             else:
-                r_0 = 10.
-                r_a = 10.
-            if skin_type > 2 or hair_type > 1:
-                if action >= 1.:
-                    reward -= 0.
+                reward += r * r_0
+        else:
+            if pain[step_counter] >= self.last_pain[step_counter - 1] and game.task_id != 0 and step_counter >= 1:
+                if ref_value_min - rf_vl < action < ref_value_max - rf_vl:
+                    reward += r * r_a  # + rf
+                    pain_p = 1. - pain[step_counter].cpu()
+                    print("last",pain_p)
                 else:
-                    reward += r * r_0
+                    # ommiting negarive rewards better regarding Q value without mean/sum estimate??
+                    reward -= 0.  # r * r_a  # + rf
+            elif pain[step_counter] >= 0.25 and game.task_id != 0:
+                if ref_value_min - rf_vl < action < ref_value_max - rf_vl:
+                    reward += r * r_a  # + rf
+                    pain_p = 1. - pain[step_counter].cpu()
+                    print("first",pain_p)
+                else:
+                    # ommiting negarive rewards better regarding Q value without mean/sum estimate??
+                    reward -= 0.  # r * r_a  # + rf
             else:
                 if ref_value_min < action < ref_value_max:
                     reward += r * r_a  # + rf
                 else:
                     # ommiting negarive rewards better regarding Q value without mean/sum estimate??
                     reward -= 0.  # r * r_a  # + rf
-        else:
-            # PRE-TRAINING WITH SIMPLER TASK
-            self.task_indicator[0] = torch.tensor([0.]).to(self.device)
-            if ref_value_min < action < ref_value_max:
-                reward += r * 10.  # + rf
-            else:
-                reward -= 0.  # r * 10. #+ rf
-        # print(reward)
 
+        if step_counter == 8:
+            del self.last_pain
+            self.last_pain = None
+        else:
+            self.last_pain[step_counter] = pain[step_counter]
+            self.in_a_row_reward = 0.
         if step_counter == 8 and reward >= 5:
-            additional_reward = 1.
+            additional_reward += 1.
+
         if step_counter == 8 and reward >= 6:
-            additional_reward = 2.5
+            additional_reward += 2.
+
         if step_counter == 8 and reward >= 7:
-            additional_reward = 5.
+            additional_reward += 5.
+
         if step_counter == 8 and reward >= 8:
-            additional_reward = 10.
+            additional_reward += 7.  # 10
         if step_counter == 8 and reward >= 9:
-            print("maximum reward!")
-            additional_reward = 25.
-        return reward, additional_reward
+            # self.in_a_row_reward += 1.
+            print("  maximum reward!")
+            additional_reward += 15.  # + self.in_a_row_reward  # 25
+
+        return reward, additional_reward, pain_p
 
     def int2binary(self, step_counter):
         bin = list(map(float, f'{step_counter:04b}'))

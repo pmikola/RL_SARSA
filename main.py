@@ -12,7 +12,7 @@ from agent import Agent
 from dataset import DataSet
 from game import Game
 from valueFunction import ValueFunction
-from neuralNetwork import NeuralNetwork_SA, NeuralNetwork_S
+from neuralNetwork import Q_Network, Policy_Network
 
 # device = 'cuda' if torch.cuda.is_available() else 'cpu'
 # x = dataSet.decode_input(dataSet.create_input_set())
@@ -23,7 +23,7 @@ no_of_actions = 256
 num_e_bits = 5
 num_m_bits = 10
 
-no_of_states = 14  # + num_e_bits + num_m_bits
+no_of_states = 14 + 9  # + num_e_bits + num_m_bits
 alpha = 0.0001
 epsilon = 0.012
 gamma = 0.99
@@ -37,8 +37,8 @@ dataset = DataSet(device)
 torch.manual_seed(2023)
 random.seed(2023)
 np.random.seed(2023)
-net = NeuralNetwork_S(no_of_actions, no_of_states, device)
-net2 = NeuralNetwork_SA(no_of_actions, no_of_states, device)
+net = Q_Network(no_of_actions, no_of_states, device)
+net2 = Policy_Network(no_of_actions, no_of_states, device)
 net.to(device).requires_grad_(True)
 net2.to(device).requires_grad_(True)
 valueFunc = ValueFunction(alpha, epsilon, gamma, tau, device, no_of_actions, v_min=-no_of_games * no_of_rounds,
@@ -49,7 +49,7 @@ agent.BATCH_SIZE = 100
 game = Game(valueFunc, agent, device, no_of_rounds)
 game.game_cycles = 72
 game.games = no_of_games
-game.agent.exp_over = int((game.game_cycles - 3) / 2)
+game.agent.exp_over = int((game.game_cycles - 12) / 2)
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
 r_data = []
 a_data = []
@@ -58,6 +58,7 @@ loss = []
 c_map_data = []
 total_time = 0.
 ax = plt.figure().gca()
+game.task_id = 1.
 for i in range(1, game.game_cycles + 1):
     game.cycle = i
     start = time.time()
@@ -71,7 +72,7 @@ for i in range(1, game.game_cycles + 1):
     print("  Elapsed time : ", t, " [s]")
     print("----------------------------------")
     if game.cycle >= int(game.agent.exp_over / 3):
-        game.task_id = 1.
+        game.task_id = 0.
     if game.cycle >= int(game.agent.exp_over / 3) * 2:
         game.task_id = 2.
     if game.cycle >= game.agent.exp_over:
