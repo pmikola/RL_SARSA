@@ -77,32 +77,31 @@ class Game:
         for k in range(games):
             self.pain_p = np.random.random_sample()
             self.n_samples = 1000
-            if game.task_id != 0:
-                self.pain = torch.tensor([self.pain_p, 0., 0., 0., 0., 0., 0., 0., 0.]).to(self.device)
-            else:
-                self.pain = torch.tensor([0., 0., 0., 0., 0., 0., 0., 0., 0.]).to(self.device)
+            self.reduced_hair = torch.tensor([0., 0., 0., 0., 0., 0., 0., 0., 0.]).to(self.device)
+            self.pain = torch.tensor([0., 0., 0., 0., 0., 0., 0., 0., 0.]).to(self.device)
 
             while True:
-                self.s, self.done, self.game_over = self.agent.get_state(self.pain, step_counter, dataset)
+                self.s, self.done, self.game_over = self.agent.get_state(self.pain, self.reduced_hair, step_counter,
+                                                                         dataset)
 
                 self.a, self.a_value, _ = self.agent.take_action(self.s, step_counter, dataset,
                                                                  game)
 
-
-
-                self.reward, self.ad_reward,self.pain,self.pain_p = self.agent.checkRewardAndModBehavior(self.reward, self.a_value, self.s, self.dataset,
-                                                                     step_counter,
-                                                                     game, self.lower_limit, self.upper_limit,
-                                                                     self.std, self.pain,self.pain_p,self.n_samples)
+                self.reward, self.ad_reward, self.pain, self.pain_p, self.reduced_hair = self.agent.checkRewardAndModBehavior(
+                    self.reward, self.a_value, self.s, self.dataset,
+                    step_counter,
+                    game, self.lower_limit, self.upper_limit,
+                    self.std, self.pain, self.pain_p, self.n_samples, self.reduced_hair)
 
                 # print("p_lvl : ",pain_level,"p :",self.pain_p,step_counter)
-                self.s_next, self.done, self.game_over = self.agent.get_state(self.pain, step_counter, dataset)
+                self.s_next, self.done, self.game_over = self.agent.get_state(self.pain, self.reduced_hair,
+                                                                              step_counter, dataset)
                 self.a_next, a_val_next, _ = self.agent.take_next_action(self.s_next, self.a, step_counter, dataset,
                                                                          game)
 
-                l = self.agent.train_short_memory(self.s, self.a, self.reward, self.s_next,
-                                                  self.a_next, self.game_over,
-                                                  self.game.agent.task_indicator, self.ad_reward)
+                self.agent.train_short_memory(self.s, self.a, self.reward, self.s_next,
+                                              self.a_next, self.game_over,
+                                              self.game.agent.task_indicator, self.ad_reward)
                 # remember
                 self.game.agent.remember(self.s, self.a, self.reward, self.s_next, self.a_next, self.game_over,
                                          self.game.agent.task_indicator, self.ad_reward)
@@ -120,4 +119,4 @@ class Game:
                     pain.append((torch.sum(self.pain)).cpu())
                     self.reward = 0.
                     break
-        return rewards, a_val, losses,pain
+        return rewards, a_val, losses, pain

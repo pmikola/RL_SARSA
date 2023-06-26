@@ -66,7 +66,6 @@ class Agent:
     def train_short_memory(self, state, action, reward, next_state, a_next, done, tid, ad_reward):
         if len(self.memory) > 0:
             l = self.train_step(state, action, reward, next_state, a_next, done, tid, ad_reward)
-            return l
 
     def prioritized_replay(self, mini_sample, no_top_k):
         states, actions, rewards, next_states, next_actions, dones, tid, ad_reward, priorities = zip(*mini_sample)
@@ -255,7 +254,7 @@ class Agent:
         a_value = game.agent.action2value(a, self.net.no_of_heads, game.lower_limit, game.upper_limit)
         return a, a_value, body_part
 
-    def get_state(self, pain, step_counter, dataset):
+    def get_state(self, pain, hair_r, step_counter, dataset):
         turn = self.int2binary(step_counter).to(self.device)
         patient = dataset.create_input_set().to(self.device)
         if step_counter >= 9:
@@ -266,7 +265,7 @@ class Agent:
             game_over = False
         # s = torch.cat((patient, turn, done, self.n_e_bits, self.n_m_bits), axis=0)
 
-        s = torch.cat((patient, turn, done, pain), dim=0)
+        s = torch.cat((patient, turn, done, pain, hair_r), dim=0)
         s = torch.cat((s, s), dim=0)
         # print(s)
         return s, done, game_over
@@ -342,7 +341,7 @@ class Agent:
         return action_space
 
     def checkRewardAndModBehavior(self, reward, action, state, dataset, step_counter, game, lower_limit, upper_limit,
-                                  std, pain, pain_p, n_samples):
+                                  std, pain, pain_p, n_samples, hair_r):
         hair_type, skin_type, body_part = dataset.decode_input(state)
         self.task_indicator[0] = torch.tensor([1.]).to(self.device)
         r = 0.1
@@ -359,6 +358,9 @@ class Agent:
         rf_vl = ref_value * std / 100
         ref_value_min = ref_value - rf_vl
         ref_value_max = ref_value + rf_vl
+        u_boundry = (action + 1e-8) / upper_limit
+        hair_r[step_counter] = torch.Tensor(
+            np.array(np.random.uniform(0, u_boundry, 1))).to(self.device)
         # reward_factor = torch.abs(ref_value - action).item()
         # reward_factor_0 = torch.abs(0. - action).item()
         # print(action)
@@ -367,7 +369,10 @@ class Agent:
 
         if step_counter == 0:
             self.c = not self.c
+            if game.task_id != 0:
+                pain[step_counter] = pain_p
             # print(self.counter)
+
         if self.c == 1:
             r_0 = 10.
             r_a = 10.
@@ -375,7 +380,7 @@ class Agent:
             r_0 = 10.
             r_a = 10.
 
-        if skin_type > 2 or hair_type > 1:
+        if skin_type > 3 or hair_type > 1:
             if action >= 1.:
                 reward -= 0.
             else:
@@ -391,21 +396,22 @@ class Agent:
             if pain[step_counter] <= 0.1:
                 if ref_value_min < action < ref_value_max:
                     reward += r * r_a  # + rf
+
             elif pain[step_counter] > 0.1:
                 if step_counter == 0:
-                    if ref_value_min - rf_vl*2 < action < ref_value_max - rf_vl*2:
+                    if ref_value_min - rf_vl * 2 < action < ref_value_max - rf_vl * 2:
                         reward += r * r_a  # + rf
                         pain_p = pain_p / 2
                 else:
                     if pain[step_counter] >= self.last_pain[step_counter - 1]:
-                        if ref_value_min - rf_vl*2 < action < ref_value_max - rf_vl*2:
+                        if ref_value_min - rf_vl * 2 < action < ref_value_max - rf_vl * 2:
                             reward += r * r_a  # + rf
                             pain_p = pain_p / 2
                     else:
                         if ref_value_min < action < ref_value_max:
                             reward += r * r_a  # + rf
                             pain_p = pain_p / 2
-            #print(pain[step_counter])
+            # print(pain[step_counter])
 
         if self.last_pain is None:
             self.last_pain = pain
@@ -415,6 +421,7 @@ class Agent:
         if step_counter == 8:
             del self.last_pain
             self.last_pain = None
+            additional_reward += torch.sum(hair_r)/len(hair_r) * len(hair_r)
         else:
             self.last_pain[step_counter] = pain[step_counter]
             # self.in_a_row_reward = 0.
@@ -434,7 +441,7 @@ class Agent:
             print("  maximum reward!")
             additional_reward += 15.  # + self.in_a_row_reward  # 25
 
-        return reward, additional_reward,pain, pain_p
+        return reward, additional_reward, pain, pain_p, hair_r
 
     def int2binary(self, step_counter):
         bin = list(map(float, f'{step_counter:04b}'))

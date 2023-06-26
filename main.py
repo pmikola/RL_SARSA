@@ -23,12 +23,13 @@ no_of_actions = 256
 num_e_bits = 5
 num_m_bits = 10
 
-no_of_states = 14 + 9  # + num_e_bits + num_m_bits
+# hair_color + skin_color + pain + hair_reduction
+no_of_states = 32  # + num_e_bits + num_m_bits
 alpha = 0.0001
 epsilon = 0.012
 gamma = 0.99
 tau = 0.01
-no_of_games = 50
+no_of_games = 2
 no_of_rounds = 9
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("DEVICE: ", device)
@@ -64,7 +65,7 @@ for i in range(1, game.game_cycles + 1):
     game.cycle = i
     start = time.time()
     print("GAME CYCLE : ", i)
-    rewards, a_val, losses,pains = game.playntrain(game, dataset, games=no_of_games)
+    rewards, a_val, losses, pains = game.playntrain(game, dataset, games=no_of_games)
     print("  REWARDS TOTAL : ", sum(rewards), " ||  RANDOM GUESSES: ",
           game.agent.no_of_guesses)
     end = time.time()
@@ -147,9 +148,9 @@ plt.grid()
 plt.show()
 
 bb = plt.figure().gca()
-pain_total = np.array(sum(p_pain, [])) / no_of_rounds
-bb.plot(pain_total)
-
+pain_total = np.array(p_pain)
+pain_avg = np.trapz(pain_total, dx=0.01, axis=1)
+bb.plot(pain_avg)
 plt.xlabel("No. Games")
 plt.ylabel("Pain Level")
 plt.grid()

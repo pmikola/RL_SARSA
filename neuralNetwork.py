@@ -9,8 +9,6 @@ import torch.optim as optim
 from torch import Tensor
 
 
-
-
 class Q_Network(nn.Module):
     def __init__(self, no_of_heads, no_of_states, device):
         super(Q_Network, self).__init__()
@@ -63,7 +61,7 @@ class Q_Network(nn.Module):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
 
-    def kWTA(self, input_vector, k_winers):#, inhibiton):
+    def kWTA(self, input_vector, k_winers):  # , inhibiton):
         no_neurons = input_vector.shape[1]
 
         # kWTA = torch.full((input_vector.shape[0], no_neurons),0.01).to(self.device) # Inhibition  <- clipping weights
@@ -91,7 +89,7 @@ class Q_Network(nn.Module):
             task_indicator = torch.unsqueeze(task_indicator, dim=0)
 
         # LIN VS SOFTMAX VS SIGMOID VS RELU ON OUTPUT
-        #context_input = torch.cat((state, task_indicator), dim=1)
+        # context_input = torch.cat((state, task_indicator), dim=1)
 
         # print("context state 2", context_input.shape)
         cx1 = torch.tanh(self.cx1_1(task_indicator))
@@ -200,9 +198,9 @@ class Policy_Network(nn.Module):
             # print(k)
             top_k_val_max, top_k_ind_max = torch.topk(input_vector[i], k.int().item(), largest=True, sorted=False)
             # top_k_val_min, top_k_ind_min = torch.topk(input_vector[i], k.int().item(), largest=False, sorted=False)
-            #inhibition_strength = torch.argmax(inhibiton[i]).int().item() + 1
+            # inhibition_strength = torch.argmax(inhibiton[i]).int().item() + 1
             # inhibition_strength = inhibition_strength * 0.5
-            #kWTA[i] = kWTA[
+            # kWTA[i] = kWTA[
             #              i] / inhibition_strength  # torch.FloatTensor(input_vector.shape[1]).uniform_(-1 / inhibition_strength,
             # 1 / inhibition_strength).to(
             # self.device)
@@ -266,4 +264,3 @@ class Policy_Network(nn.Module):
         x = self.linear5(x)
         output = x
         return output
-

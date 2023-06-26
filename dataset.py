@@ -29,9 +29,10 @@ class DataSet:
         self.hz_dark_brown = torch.Tensor([5, 25]).to(device).requires_grad_(True)
         self.hz_lighth_brown = torch.Tensor([10, 20]).to(device).requires_grad_(True)
         self.hz_blond_red = torch.Tensor([15, 15]).to(device).requires_grad_(True)
-        self.women_area_per_bodyPart = torch.Tensor([3, 2, 6, 4, 1, 1, 4, 3, 4, 3]).to(device).requires_grad_(True)
+        self.women_area_per_bodyPart = torch.Tensor([3, 2, 6, 4, 1, 1, 4, 3]).to(device).requires_grad_(True)
+        # RAMIĘ,PRZEDRAMIĘ,UDO,ŁYDKA,PACHA,TWARZ,BRZUCH,BIKINI
         self.men_area_per_bodyPart = torch.Tensor([4, 3, 8, 6, 1, 1, 6, 6, 12, 2]).to(device).requires_grad_(True)
-
+        # RAMIĘ, PRZEDRAMIĘ,UDO, ŁYDKA, PACHA, TWARZ, BRZUCH, KLATKA PIERSIOWA, PLECY, BARKI
     def create_target(self, std):
         kj_total_var = torch.zeros((9, 3), requires_grad=True, device=self.device)
         hz_var = torch.zeros((9, 3), requires_grad=True, device=self.device)
