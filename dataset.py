@@ -40,24 +40,15 @@ class DataSet:
 
         for i in range(len(self.kj_total)):
             kj_total_var[i][0].data.copy_(torch.normal(self.kj_total[i][0][0].clone(), self.kj_total[i][0][0].detach()) * std)
-            kj_total_var[i][0].requires_grad_(True)
             kj_total_var[i][1].data.copy_(torch.normal(self.kj_total[i][1][0].clone(), self.kj_total[i][1][0].detach()) * std)
-            kj_total_var[i][1].requires_grad_(True)
             kj_total_var[i][2].data.copy_(torch.normal(self.kj_total[i][2][0].clone(), self.kj_total[i][2][0].detach()) * std)
-            kj_total_var[i][2].requires_grad_(True)
             hz_var[i][0].data.copy_(torch.normal(self.hz[i][0][0].clone(), self.hz[i][0][0].detach()) * std)
-            hz_var[i][0].requires_grad_(True)
             hz_var[i][1].data.copy_(torch.normal(self.hz[i][1][0].clone(), self.hz[i][1][0].detach()) * std)
-            hz_var[i][1].requires_grad_(True)
             hz_var[i][2].data.copy_(torch.normal(self.hz[i][2][0].clone(), self.hz[i][2][0].detach()) * std)
-            hz_var[i][2].requires_grad_(True)
 
             j_cm2_var[i][0].data.copy_(torch.normal(self.j_cm2[i][0][0].clone(), self.j_cm2[i][0][0].detach()) * std)
-            j_cm2_var[i][0].requires_grad_(True)
             j_cm2_var[i][1].data.copy_(torch.normal(self.j_cm2[i][1][0].clone(), self.j_cm2[i][1][0].detach()) * std)
-            j_cm2_var[i][1].requires_grad_(True)
             j_cm2_var[i][2].data.copy_(torch.normal(self.j_cm2[i][2][0].clone(), self.j_cm2[i][2][0].detach()) * std)
-            j_cm2_var[i][2].requires_grad_(True)
 
         return kj_total_var, hz_var, j_cm2_var
 
@@ -66,10 +57,10 @@ class DataSet:
         skin_type = np.random.randint(0, 5)
         body_type = np.random.randint(0, 3)
         # print('hair_type:',hair_type,'skin_type:',skin_type,'body_type:',body_type)
-        hair_color = torch.Tensor(list(map(float, f'{hair_type:03b}'))).to(self.device).requires_grad_(True)
-        skin_color = torch.Tensor(list(map(float, f'{skin_type:03b}'))).to(self.device).requires_grad_(True)
-        body_part = torch.Tensor(list(map(float, f'{body_type:03b}'))).to(self.device).requires_grad_(True)
-        rl_input = torch.cat((hair_color, skin_color, body_part)).to(self.device).requires_grad_(True)
+        hair_color = torch.Tensor(list(map(float, f'{hair_type:03b}'))).to(self.device)
+        skin_color = torch.Tensor(list(map(float, f'{skin_type:03b}'))).to(self.device)
+        body_part = torch.Tensor(list(map(float, f'{body_type:03b}'))).to(self.device)
+        rl_input = torch.cat((hair_color, skin_color, body_part)).to(self.device)
         # print(rl_input)
         return rl_input
 

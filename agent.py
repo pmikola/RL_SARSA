@@ -14,12 +14,13 @@ from binary_converter import float2bit
 
 
 class Agent:
-    def __init__(self, neuralNetwork, neuralNetwork2, valueFunction, no_of_states, num_e_bits, num_m_bits, device):
+    def __init__(self, actor,critic, target, valueFunction, no_of_states, num_e_bits, num_m_bits, device):
         self.counter = 0
         self.counter_coef = 0
         self.exp_over = 10
-        self.net = neuralNetwork
-        self.net2 = neuralNetwork2
+        self.actor = actor
+        self.target = target
+        self.critic = critic
         self.num_e_bits = num_e_bits
         self.num_m_bits = num_m_bits
         self.c = 0
@@ -30,8 +31,6 @@ class Agent:
         self.sign = torch.tensor([1.]).to(device)
         self.no_of_guesses = 0.
         self.task_indicator = torch.tensor([0., 0., 0., 0.]).to(device)
-        print(self.net)
-        print(self.net2)
         self.BATCH_SIZE = 200
         self.MAX_MEMORY = 100_000
         self.MAX_PRIORITY = torch.tensor(1.).to(device)
@@ -42,12 +41,9 @@ class Agent:
             self.device)  # Set initial priority to maximum
 
         # self.optimizer = torch.optim.SGD(self.net.parameters(), lr=0.001)
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.00005, betas=(0.9, 0.999), eps=1e-08,
+        self.optimizer = torch.optim.Adam(self.actor.parameters(), lr=1e-3, betas=(0.9, 0.999), eps=1e-08,
                                           weight_decay=0, amsgrad=True)
-
-        # self.optimizer = torch.optim.RAdam(self.net.parameters(), lr=0.0001, betas=(0.9, 0.999), eps=1e-08,
-        #                                    weight_decay=0)
-        self.optimizer2 = torch.optim.Adam(self.net2.parameters(), lr=0.00005, betas=(0.9, 0.999), eps=1e-08,
+        self.optimizer2 = torch.optim.Adam(self.target.parameters(), lr=1e-3, betas=(0.9, 0.999), eps=1e-08,
                                            weight_decay=5e-3, amsgrad=True)
 
         self.Q_MAX = 0.
@@ -146,8 +142,7 @@ class Agent:
             r = torch.unsqueeze(torch.tensor(r, dtype=torch.float), 0).to(self.device)
             ad_reward = torch.unsqueeze(torch.tensor(ad_reward, dtype=torch.float), 0).to(self.device)
             tid = torch.unsqueeze(tid.clone().detach(), 0).to(self.device)
-
-            game_over = (game_over,)  # tuple with only one value
+            game_over = (game_over,)
         else:
             s = torch.stack(list(s), dim=0).clone().detach().to(self.device)
             a = torch.stack(list(a), dim=0).clone().detach().to(self.device)
@@ -155,15 +150,9 @@ class Agent:
             ad_reward = torch.stack(list(torch.tensor(ad_reward, dtype=torch.float))).clone().detach().to(self.device)
             s_next = torch.stack(list(s_next), dim=0).clone().detach().to(self.device)
             a_next = torch.stack(list(a_next), dim=0).clone().detach().to(self.device)
-            # tid = torch.stack([torch.tensor(t, device=self.device) for t in tid], dim=0).clone().detach().to(
-            # self.device)
             tid = torch.stack(list(tid), dim=0).clone().detach().to(self.device)
 
-            # tid = torch.stack(list(tid), dim=0).clone().detach().to(self.device)
-
-            # hn = torch.stack(list(hn), dim=0).clone().detach().to(self.device)
-        # print(s)
-        target, prediction, prediction2 = self.vF.Q_value(self.net, self.net2, s, a, r, s_next, a_next, game_over,
+        target, prediction = self.vF.Q_value(self.actor, self.target, s, a, r, s_next, a_next, game_over,
                                                           tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
 
@@ -204,7 +193,7 @@ class Agent:
         # l.backward(retain_graph=True)
         # self.optimizer2.step()
 
-        # self.vF.soft_update(self.net, self.net2)
+        self.vF.soft_update(self.actor, self.target)
 
         # if state_a != state_b:
         #    print("LAYERS WEIGHT SUM:", self.net.layers[0].weight.sum())
@@ -225,14 +214,14 @@ class Agent:
             # action = self.actions[step_counter][body_part]
             # print(action)
 
-            a = game.agent.value2action(self.actions, self.net.no_of_heads,
+            a = game.agent.value2action(self.actions, self.actor.no_of_heads,
                                         game.lower_limit, game.upper_limit)
             a = torch.unsqueeze(a, dim=0)
 
 
         else:
             a = self.actions
-        a_value = game.agent.action2value(a, self.net.no_of_heads, game.lower_limit, game.upper_limit)
+        a_value = game.agent.action2value(a, self.actor.no_of_heads, game.lower_limit, game.upper_limit)
         return a, a_value, body_part
 
     def take_next_action(self, s_next, action, step_counter, dataset, game):
@@ -244,13 +233,12 @@ class Agent:
             self.no_of_guesses += 1
             # action = self.actions[step_counter][body_part]
             # print(action)
-
-            a = game.agent.value2action(self.actions, self.net.no_of_heads,
+            a = game.agent.value2action(self.actions, self.actor.no_of_heads,
                                         game.lower_limit, game.upper_limit)
             a = torch.unsqueeze(a, dim=0)
         else:
             a = self.actions
-        a_value = game.agent.action2value(a, self.net.no_of_heads, game.lower_limit, game.upper_limit)
+        a_value = game.agent.action2value(a, self.actor.no_of_heads, game.lower_limit, game.upper_limit)
         return a, a_value, body_part
 
     def get_state(self, step_counter, dataset):
@@ -302,7 +290,7 @@ class Agent:
             is_random = 1
         else:
             state = state.to(self.device)
-            self.actions = self.net(state.clone(), self.task_indicator)
+            self.actions = self.actor(state.clone(), self.task_indicator)
         return self.actions.clone(), is_random
 
     def chooseNextAction(self, state_next, action, dataset, game):
@@ -320,16 +308,12 @@ class Agent:
             #self.actions = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit)).to(self.device)
             self.act = np.random.uniform(-1., 1.)
             mean = (game.lower_limit + game.upper_limit) / 2
-            # self.actions = torch.tensor(invgauss.rvs(mean, size=1)).to(self.device)
-            # self.actions = torch.tensor(wald.rvs(mean, size=1)).to(self.device)
             self.actions = torch.tensor(np.arcsin(self.act)*mean + mean).to(self.device)
-            # print(self.actions)
             is_random = 1
         else:
             state_next = state_next.to(self.device)
-            action = action.to(self.device)
             # self.actions = self.net2(state_next.clone(), action.clone(), self.task_indicator)
-            self.actions = self.net(state_next.clone(), self.task_indicator)
+            self.actions = self.actor(state_next.clone(), self.task_indicator)
 
         return self.actions.clone(), is_random
 

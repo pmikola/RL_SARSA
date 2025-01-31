@@ -11,20 +11,18 @@ from torch import optim
 from agent import Agent
 from dataset import DataSet
 from game import Game
-from valueFunction import ValueFunction
+from estimators import Estimators
 from neuralNetwork import NeuralNetwork_SA, NeuralNetwork_S
 
 # device = 'cuda' if torch.cuda.is_available() else 'cpu'
 # x = dataSet.decode_input(dataSet.create_input_set())
 # y = dataSet.create_target(15)
-
-
 no_of_actions = 256
 num_e_bits = 5
 num_m_bits = 10
 
 no_of_states = 14  # + num_e_bits + num_m_bits
-alpha = 0.0001
+alpha = 1e-4
 epsilon = 0.012
 gamma = 0.99
 tau = 0.01
@@ -37,13 +35,15 @@ dataset = DataSet(device)
 torch.manual_seed(2023)
 random.seed(2023)
 np.random.seed(2023)
-net = NeuralNetwork_S(no_of_actions, no_of_states, device)
-net2 = NeuralNetwork_SA(no_of_actions, no_of_states, device)
-net.to(device).requires_grad_(True)
-net2.to(device).requires_grad_(True)
-valueFunc = ValueFunction(alpha, epsilon, gamma, tau, device, no_of_actions, v_min=-no_of_games * no_of_rounds,
-                          v_max=no_of_games * no_of_rounds)
-agent = Agent(net, net2, valueFunc, no_of_states, num_e_bits, num_m_bits, device)
+actor = NeuralNetwork_S(no_of_actions, no_of_states, device)
+target = NeuralNetwork_S(no_of_actions, no_of_states, device)
+critic = NeuralNetwork_SA(no_of_actions, no_of_states, device)
+actor.to(device)
+target.to(device)
+critic.to(device)
+valueFunc = Estimators(alpha, epsilon, gamma, tau, device, no_of_actions, v_min=-no_of_games * no_of_rounds,
+                       v_max=no_of_games * no_of_rounds)
+agent = Agent(actor, critic,target, valueFunc, no_of_states, num_e_bits, num_m_bits, device)
 agent.BATCH_SIZE = 100
 
 game = Game(valueFunc, agent, device, no_of_rounds)

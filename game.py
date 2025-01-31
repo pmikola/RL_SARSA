@@ -35,10 +35,10 @@ class Game:
     def reset(self, dataset):
         pass
 
-    def playntrain(self, game, dataset, games=100):
+    def playntrain(self, game, dataset, games=10):
         self.game = game
         self.game.agent.no_of_guesses = 0.
-        self.agent.net.train()
+        self.agent.actor.train()
         self.games = games
 
         # self.agent.net2.train()
