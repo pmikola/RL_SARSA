@@ -18,23 +18,20 @@ class Estimators:
         self.tau = tau
         self.n_steps = n_steps
 
-    def Q_value(self, actor, target, s, a, r, s_next, a_next, game_over, task_indicator, ad_reward):
+    def Q_value(self, actor, critic, target, s, a, r, s_next, a_next, game_over, task_indicator, ad_reward):
         Q_current = actor(s, task_indicator)
+        critic_eval = critic(s, Q_current, task_indicator)
         with torch.no_grad():
-            Q_target = target(s_next, task_indicator).detach()
-        for idx in range(len(game_over)):
-            Q_new = r[idx] + ad_reward[idx]
-            if not game_over[idx]:
-                current_action_idx = torch.argmax(a[idx], dim=-1).item()
-                #Note: Indexing Q-main using max value position from next action give us SARS(A)
-                next_action_idx = torch.argmax(a_next[idx], dim=-1).item()
-                Q_new += self.alpha * ((r[idx] + ad_reward[idx]) + self.gamma * Q_target[idx][next_action_idx])
-                #Note: Multi-step return -> looking ahead of choosing path by n steps
-                for step in range(1, self.n_steps):
-                    if idx + step < len(game_over):
-                        Q_new += (self.gamma ** step) * (r[idx + step] + ad_reward[idx + step])
-                Q_target[idx,current_action_idx] = Q_new
-        return Q_target, Q_current
+            Q_next = target(s_next, task_indicator).detach()
+        Q_target_updated = Q_next.clone()
+        Q_new = r.unsqueeze(-1) + ad_reward.unsqueeze(-1)
+        current_action_idx = torch.argmax(a, dim=-1)
+        next_action_idx = torch.argmax(a_next, dim=-1)
+        q_next = Q_next.gather(1, next_action_idx)
+        Q_new += self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + self.gamma * q_next)
+        Q_new = 0.5 * Q_new + 0.5 * critic_eval
+        Q_target_updated.scatter_(dim=1, index=current_action_idx, src=Q_new)
+        return Q_target_updated, Q_current
 
     def soft_update(self, net, target_net):
         with torch.no_grad():

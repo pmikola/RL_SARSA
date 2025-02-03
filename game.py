@@ -69,30 +69,16 @@ class Game:
 
         for k in range(games):
             while True:
+                self.agent.total_counter = self.total_counter
                 self.s, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
-
-                self.a, self.a_value, _ = self.agent.take_action(self.s, step_counter, dataset,
-                                                                 game)
-
+                self.a, self.a_value, _ = self.agent.take_action(self.s, step_counter, dataset,game)
                 self.reward,self.ad_reward = self.agent.checkReward(self.reward, self.a_value, self.s, self.dataset, step_counter,
                                                      game, self.lower_limit, self.upper_limit,
                                                      self.std)
-
                 self.s_next, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
-                self.a_next, a_val_next, _ = self.agent.take_next_action(self.s_next, self.a, step_counter, dataset,
-                                                                         game)
-
-                # print(self.a_value,a_val_next)
-                # time.sleep(1)
-                # train short memory
-
-                l = self.agent.train_short_memory(self.s, self.a, self.reward, self.s_next,
-                                                  self.a_next, self.game_over,
-                                                  self.game.agent.task_indicator,self.ad_reward)
-                # remember
-                self.game.agent.remember(self.s, self.a, self.reward, self.s_next, self.a_next, self.game_over,
-                                         self.game.agent.task_indicator,self.ad_reward)
-
+                self.a_next, a_val_next, _ = self.agent.take_next_action(self.s_next, self.a, step_counter, dataset,game)
+                l = self.agent.train_short_memory(self.s, self.a, self.reward, self.s_next,self.a_next, self.game_over,self.game.agent.task_indicator,self.ad_reward)
+                self.game.agent.remember(self.s, self.a, self.reward, self.s_next, self.a_next, self.game_over, self.game.agent.task_indicator,self.ad_reward)
                 step_counter += 1
                 self.total_counter += 1
                 # self.reward += 1

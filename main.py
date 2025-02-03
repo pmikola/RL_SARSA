@@ -22,11 +22,11 @@ num_e_bits = 5
 num_m_bits = 10
 
 no_of_states = 14  # + num_e_bits + num_m_bits
-alpha = 1e-4
-epsilon = 0.012
-gamma = 0.99
+alpha = 1.
+epsilon = 0.1
+gamma = 0.95
 tau = 0.01
-no_of_games = 50
+no_of_games = 20
 no_of_rounds = 9
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("DEVICE: ", device)
@@ -44,10 +44,10 @@ critic.to(device)
 valueFunc = Estimators(alpha, epsilon, gamma, tau, device, no_of_actions, v_min=-no_of_games * no_of_rounds,
                        v_max=no_of_games * no_of_rounds)
 agent = Agent(actor, critic,target, valueFunc, no_of_states, num_e_bits, num_m_bits, device)
-agent.BATCH_SIZE = 100
+agent.BATCH_SIZE = 64
 
 game = Game(valueFunc, agent, device, no_of_rounds)
-game.game_cycles = 72
+game.game_cycles = 50
 game.games = no_of_games
 game.agent.exp_over = 0#int((game.game_cycles - 3) / 2)
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
@@ -70,32 +70,31 @@ for i in range(1, game.game_cycles + 1):
     total_time += t
     print("  Elapsed time : ", t, " [s]")
     print("----------------------------------")
-    if game.cycle >= int(game.agent.exp_over / 3):
+    if game.cycle >= game.game_cycles*0.2:
         game.task_id = 1.
-    if game.cycle >= int(game.agent.exp_over / 3) * 2:
+    if game.cycle >= game.game_cycles*0.4:
         game.task_id = 2.
-    if game.cycle >= game.agent.exp_over:
+    if game.cycle >= game.game_cycles*0.6:
         game.task_id = 0.
-    if game.cycle >= game.agent.exp_over + int(game.agent.exp_over / 3):
+    if game.cycle >= game.game_cycles*0.8:
         game.task_id = 1.
-    if game.cycle >= game.agent.exp_over + int(game.agent.exp_over / 3) * 2:
+    if game.cycle >= game.game_cycles*0.9:
         game.task_id = 2.
-    if game.cycle >= game.game_cycles - 12:
+    # Note: test  network with learning on
+    if game.cycle >= game.game_cycles - 6:
         game.task_id = 0.
-        game.valueFunction.epsilon = 1.
-    if game.cycle >= game.game_cycles - 8:
-        game.task_id = 1.
-        game.valueFunction.epsilon = 1.
+        game.valueFunction.epsilon = 1.-1e-3
     if game.cycle >= game.game_cycles - 4:
+        game.task_id = 1.
+        game.valueFunction.epsilon = 1.-1e-3
+    if game.cycle >= game.game_cycles - 2:
         game.task_id = 2.
-        game.valueFunction.epsilon = 1.
+        game.valueFunction.epsilon = 1.-1e-3
 
     if game.cycle % 10 == 0:
         game.agent.counter_coef = 0
     game.agent.counter_coef += 1
-
     # game.net = net
-
     r_data.append(rewards)
     a_data.append(a_val)
     l_data.append("Epoch: " + str(i))

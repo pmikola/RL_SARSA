@@ -15,6 +15,7 @@ from binary_converter import float2bit
 
 class Agent:
     def __init__(self, actor,critic, target, valueFunction, no_of_states, num_e_bits, num_m_bits, device):
+        self.total_counter = None
         self.counter = 0
         self.counter_coef = 0
         self.exp_over = 10
@@ -31,20 +32,26 @@ class Agent:
         self.sign = torch.tensor([1.]).to(device)
         self.no_of_guesses = 0.
         self.task_indicator = torch.tensor([0., 0., 0., 0.]).to(device)
-        self.BATCH_SIZE = 200
+        self.BATCH_SIZE = 64
         self.MAX_MEMORY = 100_000
         self.MAX_PRIORITY = torch.tensor(1.).to(device)
         self.vF = valueFunction
         self.memory = deque(maxlen=self.MAX_MEMORY)  # popleft()
         self.device = device
         self.priority = torch.tensor(self.MAX_PRIORITY, dtype=torch.float).to(
-            self.device)  # Set initial priority to maximum
+            self.device)
 
         # self.optimizer = torch.optim.SGD(self.net.parameters(), lr=0.001)
-        self.optimizer = torch.optim.Adam(self.actor.parameters(), lr=1e-3, betas=(0.9, 0.999), eps=1e-08,
-                                          weight_decay=0, amsgrad=True)
-        self.optimizer2 = torch.optim.Adam(self.target.parameters(), lr=1e-3, betas=(0.9, 0.999), eps=1e-08,
-                                           weight_decay=5e-3, amsgrad=True)
+        self.optimizer = torch.optim.Adam(
+            list(self.actor.parameters()) + list(self.critic.parameters()),
+            lr=1e-3,
+            betas=(0.9, 0.999),
+            eps=1e-08,
+            weight_decay=0,
+            amsgrad=True
+        )
+        # self.optimizer2 = torch.optim.Adam(self.target.parameters(), lr=1e-3, betas=(0.9, 0.999), eps=1e-08,
+        #                                    weight_decay=5e-3, amsgrad=True)
 
         self.Q_MAX = 0.
         self.lossMSE = nn.MSELoss().to(self.device)
@@ -90,20 +97,20 @@ class Agent:
 
     def train_long_memory(self, total_counter):
         k = 0
-        if total_counter % 3 == 0 and len(self.memory) > self.BATCH_SIZE:
+        if total_counter % 2 == 0 and len(self.memory) > self.BATCH_SIZE:
             # RANDOM REPLAY
             if k == 1:
                 print("RANDOM")
-            mini_sample = random.sample(self.memory, self.BATCH_SIZE)  # list of tuples
+            mini_sample = random.choices(self.memory, k=self.BATCH_SIZE)  # list of tuples
             # mini_sample = self.memory
             # time.sleep(1)
             s, a, r, s_next, a_next, d, tid, p, ad_reward = zip(*mini_sample)
             l = self.train_step(s, a, r, s_next, a_next, d, tid, ad_reward)
-        if total_counter % 2 == 0 and len(self.memory) > self.BATCH_SIZE:
+        if total_counter % 5 == 0 and len(self.memory) > self.BATCH_SIZE:
             # PRIORITY HIGH LOSS EXPERIENCE REPLAY
             if k == 1:
                 print("PRIORITY")
-            mini_sample = self.memory
+            mini_sample = random.choices(self.memory, k=self.BATCH_SIZE)
             s, a, r, s_next, a_next, d, tid, ad_reward = self.prioritized_replay(mini_sample, self.BATCH_SIZE)
             l = self.train_step(s, a, r, s_next, a_next, d, tid, ad_reward)
         else:
@@ -111,7 +118,7 @@ class Agent:
             if len(self.memory) > self.BATCH_SIZE:
                 if k == 1:
                     print("RANDOM -> BATCH SIZE")
-                mini_sample = random.sample(self.memory, self.BATCH_SIZE)  # list of tuples
+                mini_sample = random.sample(self.memory, self.BATCH_SIZE)
                 s, a, r, s_next, a_next, d, tid, p, ad_reward = zip(*mini_sample)
                 l = self.train_step(s, a, r, s_next, a_next, d, tid, ad_reward)
             else:
@@ -126,9 +133,7 @@ class Agent:
 
     def loss2state(self, i, p, updated_experience):
         self.loss_bits = \
-            float2bit(torch.tensor([p, p]), num_e_bits=self.num_e_bits, num_m_bits=self.num_m_bits, bias=127.)[
-                0].to(
-                self.device)
+            float2bit(torch.tensor([p, p]), num_e_bits=self.num_e_bits, num_m_bits=self.num_m_bits, bias=127.)[0].to(self.device)
         self.memory[i] = list(updated_experience)
         for j in range(0, len(self.loss_bits)):
             self.memory[i][0][j] = self.loss_bits[j]
@@ -152,28 +157,21 @@ class Agent:
             a_next = torch.stack(list(a_next), dim=0).clone().detach().to(self.device)
             tid = torch.stack(list(tid), dim=0).clone().detach().to(self.device)
 
-        target, prediction = self.vF.Q_value(self.actor, self.target, s, a, r, s_next, a_next, game_over,
+        target, prediction = self.vF.Q_value(self.actor,self.critic, self.target, s, a, r, s_next, a_next, game_over,
                                                           tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
 
         self.optimizer.zero_grad()
-        lossHubert = self.lossHubert(target, prediction)  # BEST LOSS
-        # lossHubert_sum = self.lossHubert(target.sum(), prediction.sum())
-        # lossL1 = self.lossL1(target, prediction)
-        # lossKLD = self.lossKLD(target, prediction)  # slower training but better with multi-task
-        # lossMSE = self.lossMSE(target, prediction)
-
-        # LDP is better for long term learning but MSE gives faste
-        # ldp = self.vF.distributional_projection(r, target, prediction)
-        l = lossHubert  # lossKLD + lossMSE  # + 0.5 * ldp
+        lossHubert = self.lossHubert(target, prediction)
+        l = lossHubert
         # print(lossMain.sum().item(),ldp.sum().item())
         l.backward()
         self.optimizer.step()
         # lossHubert_sum.backward(retain_graph=True)
         # self.optimizer.step()
         # Update priorities
-        abs_td_errors = torch.abs(target - prediction).detach()  # Magnitude of our TD error
-        priorities = abs_td_errors + 1e-8  # Add small constant to avoid zero priority
+        abs_td_errors = torch.abs(target - prediction).detach()
+        priorities = abs_td_errors + 1e-8
 
         for i, priority in enumerate(priorities):
             experience = self.memory[i]
@@ -208,17 +206,11 @@ class Agent:
         _, _, body_part = dataset.decode_input(s)
 
         actions, is_random_next = self.chooseAction(s, dataset, game)
-
         if is_random_next == 1:
             self.no_of_guesses += 1
-            # action = self.actions[step_counter][body_part]
-            # print(action)
-
             a = game.agent.value2action(self.actions, self.actor.no_of_heads,
                                         game.lower_limit, game.upper_limit)
             a = torch.unsqueeze(a, dim=0)
-
-
         else:
             a = self.actions
         a_value = game.agent.action2value(a, self.actor.no_of_heads, game.lower_limit, game.upper_limit)
@@ -226,15 +218,12 @@ class Agent:
 
     def take_next_action(self, s_next, action, step_counter, dataset, game):
         _, _, body_part = dataset.decode_input(s_next)
-
         actions, is_random_next = self.chooseNextAction(s_next, action, dataset, game)
-
         if is_random_next == 1:
             self.no_of_guesses += 1
             # action = self.actions[step_counter][body_part]
             # print(action)
-            a = game.agent.value2action(self.actions, self.actor.no_of_heads,
-                                        game.lower_limit, game.upper_limit)
+            a = game.agent.value2action(self.actions, self.actor.no_of_heads,game.lower_limit, game.upper_limit)
             a = torch.unsqueeze(a, dim=0)
         else:
             a = self.actions
@@ -251,7 +240,6 @@ class Agent:
             done = torch.tensor([0.]).to(self.device)
             game_over = False
         # s = torch.cat((patient, turn, done, self.n_e_bits, self.n_m_bits), axis=0)
-
         s = torch.cat((patient, turn, done), dim=0)
         s = torch.cat((s, s), dim=0)
         # print(s)
@@ -283,15 +271,15 @@ class Agent:
             explore_coef = self.counter_coef + 1 * 1000.
         else:
             pass
-        if np.random.uniform(-self.vF.epsilon, 1 / np.power(self.counter_coef + 1, 2)) > explore_coef:
+        eps = (1e-3 + 0.95 * np.exp(-3e-4 * self.total_counter))
+        if   np.random.uniform(0,eps) > explore_coef:
             # self.actions, _, _ = dataset.create_target(200)  # For kj_total_var std
             self.actions = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
-
             is_random = 1
         else:
             state = state.to(self.device)
-            self.actions = self.actor(state.clone(), self.task_indicator)
-        return self.actions.clone(), is_random
+            self.actions = self.actor(state, self.task_indicator)
+        return self.actions, is_random
 
     def chooseNextAction(self, state_next, action, dataset, game):
         is_random = 0
@@ -303,7 +291,8 @@ class Agent:
             explore_coef = self.counter_coef + 1 * 1000.
         else:
             pass
-        if np.random.uniform(-self.vF.epsilon, 1 / np.power(self.counter_coef + 1, 2)) > explore_coef:
+        eps = (1e-3 + 0.95 * np.exp(-3e-4 * self.total_counter))
+        if  np.random.uniform(0,eps) > explore_coef:
             # self.actions, _, _ = dataset.create_target(200)  # For kj_total_var std
             #self.actions = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit)).to(self.device)
             self.act = np.random.uniform(-1., 1.)
@@ -312,10 +301,8 @@ class Agent:
             is_random = 1
         else:
             state_next = state_next.to(self.device)
-            # self.actions = self.net2(state_next.clone(), action.clone(), self.task_indicator)
-            self.actions = self.actor(state_next.clone(), self.task_indicator)
-
-        return self.actions.clone(), is_random
+            self.actions = self.actor(state_next, self.task_indicator)
+        return self.actions, is_random
 
     def action2value(self, action, num_of_actions, lower_limit, upper_limit):
         action_space = torch.arange(lower_limit, upper_limit, (upper_limit - lower_limit) / num_of_actions)
