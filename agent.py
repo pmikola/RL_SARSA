@@ -15,7 +15,8 @@ from binary_converter import float2bit
 
 class Agent:
     def __init__(self, actor,critic, target, valueFunction, no_of_states, num_e_bits, num_m_bits, device):
-        self.total_counter = None
+        self.total_counter = 0.
+        self.eps = (1e-3 + 0.95 * np.exp(-3e-4 * self.total_counter))
         self.counter = 0
         self.counter_coef = 0
         self.exp_over = 10
@@ -26,7 +27,6 @@ class Agent:
         self.num_m_bits = num_m_bits
         self.c = 0
         self.no_of_states = no_of_states
-
         self.n_e_bits = torch.tensor([1.] * self.num_e_bits).to(device)
         self.n_m_bits = torch.tensor([1.] * self.num_m_bits).to(device)
         self.sign = torch.tensor([1.]).to(device)
@@ -47,7 +47,7 @@ class Agent:
             lr=1e-3,
             betas=(0.9, 0.999),
             eps=1e-08,
-            weight_decay=0,
+            weight_decay=1e-6,
             amsgrad=True
         )
         # self.optimizer2 = torch.optim.Adam(self.target.parameters(), lr=1e-3, betas=(0.9, 0.999), eps=1e-08,
@@ -56,14 +56,12 @@ class Agent:
         self.Q_MAX = 0.
         self.lossMSE = nn.MSELoss().to(self.device)
         self.lossL1 = nn.L1Loss().to(self.device)
-        self.lossHubert = nn.HuberLoss().to(self.device)
+        self.lossHuber = nn.HuberLoss().to(self.device)
         self.lossKLD = nn.KLDivLoss(reduction="batchmean", log_target=True).to(device)
         # self.loss2 = nn.MSELoss(reduction='sum').to(self.device)
 
     def remember(self, state, action, reward, next_state, a_next, done, task_indicator, ad_reward):
-
-        self.memory.append(
-            (state, action, reward, next_state, a_next, done, task_indicator, ad_reward, self.MAX_PRIORITY))
+        self.memory.append((state, action, reward, next_state, a_next, done, task_indicator, ad_reward, self.MAX_PRIORITY))
 
     def train_short_memory(self, state, action, reward, next_state, a_next, done, tid, ad_reward):
         if len(self.memory) > 0:
@@ -138,7 +136,7 @@ class Agent:
         for j in range(0, len(self.loss_bits)):
             self.memory[i][0][j] = self.loss_bits[j]
 
-    def train_step(self, s, a, r, s_next, a_next, game_over, tid, ad_reward):
+    def train_step(self, s, a, r, s_next, a_next, done, tid, ad_reward):
         if len(torch.stack(list(s), dim=0).shape) == 1:
             s = torch.unsqueeze(s.clone().detach(), 0).to(self.device)
             s_next = torch.unsqueeze(s_next.clone().detach(), 0).to(self.device)
@@ -147,7 +145,7 @@ class Agent:
             r = torch.unsqueeze(torch.tensor(r, dtype=torch.float), 0).to(self.device)
             ad_reward = torch.unsqueeze(torch.tensor(ad_reward, dtype=torch.float), 0).to(self.device)
             tid = torch.unsqueeze(tid.clone().detach(), 0).to(self.device)
-            game_over = (game_over,)
+            done = torch.unsqueeze(done.clone().detach(), 0).to(self.device)
         else:
             s = torch.stack(list(s), dim=0).clone().detach().to(self.device)
             a = torch.stack(list(a), dim=0).clone().detach().to(self.device)
@@ -156,20 +154,16 @@ class Agent:
             s_next = torch.stack(list(s_next), dim=0).clone().detach().to(self.device)
             a_next = torch.stack(list(a_next), dim=0).clone().detach().to(self.device)
             tid = torch.stack(list(tid), dim=0).clone().detach().to(self.device)
+            done = torch.stack(list(done), dim=0).clone().detach().to(self.device)
 
-        target, prediction = self.vF.Q_value(self.actor,self.critic, self.target, s, a, r, s_next, a_next, game_over,
-                                                          tid, ad_reward)
+        target, prediction = self.vF.Q_value(self.actor,self.critic, self.target, s, a, r, s_next, a_next, done,tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
 
         self.optimizer.zero_grad()
-        lossHubert = self.lossHubert(target, prediction)
+        lossHubert = self.lossHuber(target, prediction)
         l = lossHubert
-        # print(lossMain.sum().item(),ldp.sum().item())
         l.backward()
         self.optimizer.step()
-        # lossHubert_sum.backward(retain_graph=True)
-        # self.optimizer.step()
-        # Update priorities
         abs_td_errors = torch.abs(target - prediction).detach()
         priorities = abs_td_errors + 1e-8
 
@@ -182,16 +176,7 @@ class Agent:
             # LOSS AS BIT ARRAY STATE INPUT
             # self.loss2state( i, p, updated_experience)
 
-        # state_b = self.net.state_dict().__str__()
-        # self.optimizer2.zero_grad()
-        # lossKLD2 = self.lossKLD(target, prediction)  # slower training but better with multi-task
-        # lossMSE2 = self.lossMSE(target, prediction)
-        # l2 = lossKLD + lossMSE
-
-        # l.backward(retain_graph=True)
-        # self.optimizer2.step()
-
-        self.vF.soft_update(self.actor,self.critic, self.target)
+        self.vF.soft_update(self.actor, self.target)
 
         # if state_a != state_b:
         #    print("LAYERS WEIGHT SUM:", self.net.layers[0].weight.sum())
@@ -221,8 +206,6 @@ class Agent:
         actions, is_random_next = self.chooseNextAction(s_next, action, dataset, game)
         if is_random_next == 1:
             self.no_of_guesses += 1
-            # action = self.actions[step_counter][body_part]
-            # print(action)
             a = game.agent.value2action(self.actions, self.actor.no_of_heads,game.lower_limit, game.upper_limit)
             a = torch.unsqueeze(a, dim=0)
         else:
@@ -233,15 +216,15 @@ class Agent:
     def get_state(self, step_counter, dataset):
         turn = self.int2binary(step_counter).to(self.device)
         patient = dataset.create_input_set().to(self.device)
-        if step_counter >= 9:
+        if step_counter >= 8:
             done = torch.tensor([1.]).to(self.device)
             game_over = True
         else:
             done = torch.tensor([0.]).to(self.device)
             game_over = False
-        # s = torch.cat((patient, turn, done, self.n_e_bits, self.n_m_bits), axis=0)
         s = torch.cat((patient, turn, done), dim=0)
         s = torch.cat((s, s), dim=0)
+        s +=s*torch.rand_like(s)*self.eps*1e-1
         # print(s)
         return s, done, game_over
 
@@ -265,15 +248,12 @@ class Agent:
         is_random = 0
         explore_coef = self.vF.epsilon
         hair_type, skin_type, _ = dataset.decode_input(state)
-        # c = self.vF.epsilon *  (self.counter_coef + 1)
-        # print(1 / np.power(self.counter_coef, 2))
         if game.cycle >= game.game_cycles - 2:
             explore_coef = self.counter_coef + 1 * 1000.
         else:
             pass
-        eps = (1e-3 + 0.95 * np.exp(-3e-4 * self.total_counter))
-        if   np.random.uniform(0,eps) > explore_coef:
-            # self.actions, _, _ = dataset.create_target(200)  # For kj_total_var std
+        self.eps = (1e-5 + 0.95 * np.exp(-5e-4 * self.total_counter))
+        if   np.random.uniform(0,self.eps) > explore_coef:
             self.actions = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
             is_random = 1
         else:
@@ -285,16 +265,12 @@ class Agent:
         is_random = 0
         explore_coef = self.vF.epsilon
         hair_type, skin_type, _ = dataset.decode_input(state_next)
-        # c = self.vF.epsilon *  (self.counter_coef + 1)
-        # print(1 / np.power(self.counter_coef, 2))
         if game.cycle >= game.game_cycles - 2:
             explore_coef = self.counter_coef + 1 * 1000.
         else:
             pass
-        eps = (1e-3 + 0.95 * np.exp(-3e-4 * self.total_counter))
-        if  np.random.uniform(0,eps) > explore_coef:
-            # self.actions, _, _ = dataset.create_target(200)  # For kj_total_var std
-            #self.actions = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit)).to(self.device)
+        self.eps = (1e-5 + 0.95 * np.exp(-5e-4 * self.total_counter))
+        if  np.random.uniform(0,self.eps) > explore_coef:
             self.act = np.random.uniform(-1., 1.)
             mean = (game.lower_limit + game.upper_limit) / 2
             self.actions = torch.tensor(np.arcsin(self.act)*mean + mean).to(self.device)
@@ -365,7 +341,6 @@ class Agent:
                 reward += r * 10.  # + rf
             else:
                 reward -= 0.  # r * 10. #+ rf
-        # print(reward)
 
         if step_counter == 8 and reward >= 5:
             additional_reward = 1.

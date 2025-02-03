@@ -18,7 +18,7 @@ class Estimators:
         self.tau = tau
         self.n_steps = n_steps
 
-    def Q_value(self, actor, critic, target, s, a, r, s_next, a_next, game_over, task_indicator, ad_reward):
+    def Q_value(self, actor, critic, target, s, a, r, s_next, a_next, done, task_indicator, ad_reward):
         Q_current = actor(s, task_indicator)
         critic_eval = critic(s, Q_current, task_indicator)
         with torch.no_grad():
@@ -28,12 +28,12 @@ class Estimators:
         current_action_idx = torch.argmax(a, dim=-1)
         next_action_idx = torch.argmax(a_next, dim=-1)
         q_next = Q_next.gather(1, next_action_idx)
-        Q_new += critic.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + critic.gamma * q_next)
-        Q_new = critic.beta * Q_new + (1-critic.beta) * critic_eval
+        Q_new += self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + (1-done)*self.gamma * q_next) + done*(r.unsqueeze(-1) + ad_reward.unsqueeze(-1))
+        Q_new = 0.5 * Q_new + 0.5 * critic_eval
         Q_target_updated.scatter_(dim=1, index=current_action_idx, src=Q_new)
         return Q_target_updated, Q_current
 
-    def soft_update(self, actor,critic, target_net):
+    def soft_update(self, net, target_net):
         with torch.no_grad():
-            for target_param, param in zip(target_net.parameters(), actor.parameters()):
-                target_param.data.copy_(param.data * critic.tau + target_param.data * (1 - critic.tau))
+            for target_param, param in zip(target_net.parameters(), net.parameters()):
+                target_param.data.copy_(param.data * self.tau + target_param.data * (1 - self.tau))
