@@ -191,7 +191,7 @@ class Agent:
         # l.backward(retain_graph=True)
         # self.optimizer2.step()
 
-        self.vF.soft_update(self.actor, self.target)
+        self.vF.soft_update(self.actor,self.critic, self.target)
 
         # if state_a != state_b:
         #    print("LAYERS WEIGHT SUM:", self.net.layers[0].weight.sum())

@@ -62,31 +62,30 @@ class NeuralNetwork_S(nn.Module):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
 
-    def kwta(self, input_vector, k_winers,modulation):#, inhibiton):
-        no_neurons = input_vector.shape[1]
-        kWTA = torch.FloatTensor(input_vector.shape[0], no_neurons).uniform_(-0.01, 0.01).to(self.device)  # ok
-        for i in range(0, input_vector.shape[0]):
-            k = torch.argmax(k_winers[i])
-            top_k_val_max, top_k_ind_max = torch.topk(input_vector[i], k.int().item(), largest=True, sorted=False)
-            kWTA[i][top_k_ind_max] = top_k_val_max
-        return kWTA
-
     def kwta(self, input_vector, k_winers, modulation):
         B, N = input_vector.shape
-        k_tensor = torch.argmax(k_winers, dim=1)  # Shape: [B]
-        modulation_idx = torch.argmax(modulation, dim=1)  # Shape: [B]
-        modulation_strength = ((
-                                           modulation_idx.float() + 1) / self.modulation_resolution) * self.modulation_scale  # Shape: [B]
-
+        k_tensor = torch.argmax(k_winers, dim=1)
+        modulation_idx = torch.argmax(modulation, dim=1)
+        modulation_strength = ((modulation_idx + 1) / self.modulation_resolution) * self.modulation_scale
         modulated = input_vector * modulation_strength.unsqueeze(1)
         sorted_indices = torch.argsort(input_vector, dim=1, descending=True)
-        range_tensor = torch.arange(N, device=input_vector.device).unsqueeze(0).expand(B, N)  # Shape: [B, N]
+        range_tensor = torch.arange(N, device=input_vector.device).unsqueeze(0).expand(B, N)
         ranks = torch.empty_like(sorted_indices)
         ranks.scatter_(1, sorted_indices, range_tensor)
-        winners_mask = ranks < k_tensor.unsqueeze(1)
-        kWTA = modulated.clone()
-        kWTA[winners_mask] = input_vector[winners_mask]
+        winners_mask = (ranks < k_tensor.unsqueeze(1))
+        kWTA_forward = winners_mask * input_vector + (1 - winners_mask.float()) * modulated
+        kWTA = kWTA_forward + (input_vector - input_vector).detach()
         return kWTA
+
+    # def kwta(self, input_vector, k_winers, modulation):
+    #     kWTA = input_vector
+    #     for i in range(0, input_vector.shape[0]):
+    #         k = torch.argmax(k_winers[i])
+    #         top_k_val_max, top_k_ind_max = torch.topk(input_vector[i], k.int().item(), largest=True, sorted=False)
+    #         modulation_strength = ((torch.argmax(modulation[i]) + 1) / self.modulation_resolution)*self.modulation_scale
+    #         kWTA[i] = kWTA[i] * modulation_strength
+    #         kWTA[i][top_k_ind_max] = top_k_val_max
+    #     return kWTA
 
     def forward(self, state, task_indicator):
         if state.dim() < 2:
@@ -147,6 +146,10 @@ class NeuralNetwork_SA(nn.Module):
         self.device = device
         self.input = self.no_of_states * 2 + 4 + self.no_of_heads
         self.hidden_state_action = self.input + self.hidden_size
+        self.alpha = nn.Parameter(torch.full((1,),1.0), requires_grad=True)
+        self.gamma = nn.Parameter(torch.full((1,),0.95), requires_grad=True)
+        self.tau = nn.Parameter(torch.full((1,),1e-3), requires_grad=True)
+        self.beta= nn.Parameter(torch.full((1,),0.5), requires_grad=True)
 
         self.modulate1_1 = nn.Linear(self.input, self.hidden_size * 2, bias=True)
         self.modulate1_2 = nn.Linear(self.hidden_size * 2, self.modulation_resolution, bias=True)
@@ -182,14 +185,29 @@ class NeuralNetwork_SA(nn.Module):
             module.weight.data.fill_(1.0)
 
     def kwta(self, input_vector, k_winers, modulation):
-        kWTA = input_vector
-        for i in range(0, input_vector.shape[0]):
-            k = torch.argmax(k_winers[i])
-            top_k_val_max, top_k_ind_max = torch.topk(input_vector[i], k.int().item(), largest=True, sorted=False)
-            modulation_strength = ((torch.argmax(modulation[i]) + 1) / self.modulation_resolution)*self.modulation_scale
-            kWTA[i] = kWTA[i] * modulation_strength
-            kWTA[i][top_k_ind_max] = top_k_val_max
+        B, N = input_vector.shape
+        k_tensor = torch.argmax(k_winers, dim=1)
+        modulation_idx = torch.argmax(modulation, dim=1)
+        modulation_strength = ((modulation_idx + 1) / self.modulation_resolution) * self.modulation_scale
+        modulated = input_vector * modulation_strength.unsqueeze(1)
+        sorted_indices = torch.argsort(input_vector, dim=1, descending=True)
+        range_tensor = torch.arange(N, device=input_vector.device).unsqueeze(0).expand(B, N)
+        ranks = torch.empty_like(sorted_indices)
+        ranks.scatter_(1, sorted_indices, range_tensor)
+        winners_mask = (ranks < k_tensor.unsqueeze(1))
+        kWTA_forward = winners_mask * input_vector + (1 - winners_mask.float()) * modulated
+        kWTA = kWTA_forward + (input_vector - input_vector).detach()
         return kWTA
+
+    # def kwta(self, input_vector, k_winers, modulation):
+    #     kWTA = input_vector
+    #     for i in range(0, input_vector.shape[0]):
+    #         k = torch.argmax(k_winers[i])
+    #         top_k_val_max, top_k_ind_max = torch.topk(input_vector[i], k.int().item(), largest=True, sorted=False)
+    #         modulation_strength = ((torch.argmax(modulation[i]) + 1) / self.modulation_resolution)*self.modulation_scale
+    #         kWTA[i] = kWTA[i] * modulation_strength
+    #         kWTA[i][top_k_ind_max] = top_k_val_max
+    #     return kWTA
 
     def forward(self, state, action, task_indicator):
         action = torch.squeeze(action, dim=0)
