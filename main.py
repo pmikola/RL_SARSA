@@ -24,8 +24,8 @@ num_m_bits = 10
 no_of_states = 14  # + num_e_bits + num_m_bits
 alpha = 1.
 epsilon = 1e-2
-gamma = 0.95
-tau = 0.01
+gamma = 0.5
+tau = 0.005
 no_of_games = 50
 no_of_rounds = 9
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -53,7 +53,10 @@ game.games = no_of_games
 game.agent.exp_over = 0#int((game.game_cycles - 3) / 2)
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
 r_data = []
-a_data = []
+a1_data = []
+a2_data = []
+a3_data = []
+
 l_data = []
 loss = []
 c_map_data = []
@@ -97,7 +100,10 @@ for i in range(1, game.game_cycles + 1):
         game.task_id = 2
 
     r_data.append(rewards)
-    a_data.append(a_val)
+    a1_data.append(a_val[0])
+    a2_data.append(a_val[1])
+    a3_data.append(a_val[2])
+
     l_data.append("Epoch: " + str(i))
     c_map_data.append(cmap(i))
     loss.append(losses)
@@ -116,7 +122,10 @@ plt.show()
 
 ay = plt.figure().gca()
 
-ay.hist(a_data, density=True, bins=40, alpha=0.65, stacked=True, histtype='stepfilled', label=l_data, color=c_map_data)
+ay.hist(a1_data, density=True, bins=40, alpha=0.4, stacked=True, histtype='stepfilled')#, label=l_data, color=c_map_data)
+ay.hist(a2_data, density=True, bins=40, alpha=0.4, stacked=True, histtype='stepfilled')#, label=l_data, color=c_map_data)
+ay.hist(a3_data, density=True, bins=40, alpha=0.4, stacked=True, histtype='stepfilled')#, label=l_data, color=c_map_data)
+
 ay.legend(prop={'size': 6}, loc='upper center', bbox_to_anchor=(0.5, 1.14),
           ncol=9, fancybox=True, shadow=True)
 

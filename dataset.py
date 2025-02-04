@@ -8,21 +8,59 @@ class DataSet:
         self.device = device
         # SETTINGS FOR IX LASER DEPILATION SERIES
         # REFERENCES FROM THE EXPERTS
-        self.kj_total = torch.Tensor(
+        self.kj_total_1 = torch.Tensor(
             [[[14, 14], [12, 12], [13, 13]], [[16, 16], [14, 14], [15, 15]], [[18, 18], [16, 16], [17, 17]],
              [[20, 20], [18, 18], [19, 19]], [[20, 20], [20, 20], [20, 20]], [[20, 20], [20, 20], [20, 20]],
              [[20, 20], [20, 20], [20, 20]],
              [[20, 20], [20, 20], [20, 20]], [[20, 20], [20, 20], [20, 20]]]).to(device)
 
-        self.hz = torch.Tensor([[[3, 5], [3, 5], [3, 5]], [[3, 5], [3, 5], [3, 5]], [[5, 5], [3, 10], [5, 5]],
+        self.kj_total_2 = torch.Tensor(
+            [[[14, 14], [12, 12], [13, 13]], [[16, 16], [14, 14], [15, 15]], [[18, 18], [16, 16], [17, 17]],
+             [[20, 20], [18, 18], [19, 19]], [[20, 20], [20, 20], [20, 20]], [[20, 20], [20, 20], [20, 20]],
+             [[20, 20], [20, 20], [20, 20]],
+             [[20, 20], [20, 20], [20, 20]], [[20, 20], [20, 20], [20, 20]]]).to(device)
+
+        self.kj_total_3 = torch.Tensor(
+            [[[14, 14], [12, 12], [13, 13]], [[16, 16], [14, 14], [15, 15]], [[18, 18], [16, 16], [17, 17]],
+             [[20, 20], [18, 18], [19, 19]], [[20, 20], [20, 20], [20, 20]], [[20, 20], [20, 20], [20, 20]],
+             [[20, 20], [20, 20], [20, 20]],
+             [[20, 20], [20, 20], [20, 20]], [[20, 20], [20, 20], [20, 20]]]).to(device)
+
+        self.hz_1 = torch.Tensor([[[3, 5], [3, 5], [3, 5]], [[3, 5], [3, 5], [3, 5]], [[5, 5], [3, 10], [5, 5]],
                                 [[5, 10], [3, 10], [5, 5]], [[5, 15], [5, 15], [5, 15]], [[5, 15], [5, 15], [5, 15]],
                                 [[5, 15], [5, 15], [5, 15]], [[5, 15], [5, 15], [5, 15]], [[5, 15], [5, 15], [5, 15]]]).to(
             device)
 
-        self.j_cm2 = torch.Tensor(
+        self.hz_2 = torch.Tensor([[[3, 5], [3, 5], [3, 5]], [[3, 5], [3, 5], [3, 5]], [[5, 5], [3, 10], [5, 5]],
+                                [[5, 10], [3, 10], [5, 5]], [[5, 15], [5, 15], [5, 15]], [[5, 15], [5, 15], [5, 15]],
+                                [[5, 15], [5, 15], [5, 15]], [[5, 15], [5, 15], [5, 15]],
+                                [[5, 15], [5, 15], [5, 15]]]).to(
+            device)
+
+        self.hz_3 = torch.Tensor([[[3, 5], [3, 5], [3, 5]], [[3, 5], [3, 5], [3, 5]], [[5, 5], [3, 10], [5, 5]],
+                                [[5, 10], [3, 10], [5, 5]], [[5, 15], [5, 15], [5, 15]], [[5, 15], [5, 15], [5, 15]],
+                                [[5, 15], [5, 15], [5, 15]], [[5, 15], [5, 15], [5, 15]],
+                                [[5, 15], [5, 15], [5, 15]]]).to(
+            device)
+
+        self.j_cm2_1 = torch.Tensor(
             [[[18, 18], [15, 15], [15, 17]], [[20, 20], [17, 17], [17, 17]], [[23, 23], [19, 19], [20, 20]],
              [[25, 28], [20, 20], [20, 25]], [[25, 28], [20, 25], [20, 25]], [[25, 28], [20, 25], [20, 25]],
              [[25, 28], [20, 25], [20, 25]], [[25, 28], [20, 25], [20, 25]], [[25, 28], [20, 25], [20, 25]]]).to(device)
+
+        self.j_cm2_2 = torch.Tensor(
+            [[[18, 18], [15, 15], [15, 17]], [[20, 20], [17, 17], [17, 17]], [[23, 23], [19, 19], [20, 20]],
+             [[25, 28], [20, 20], [20, 25]], [[25, 28], [20, 25], [20, 25]], [[25, 28], [20, 25], [20, 25]],
+             [[25, 28], [20, 25], [20, 25]], [[25, 28], [20, 25], [20, 25]], [[25, 28], [20, 25], [20, 25]]]).to(device)
+
+        self.j_cm2_3 = torch.Tensor(
+            [[[18, 18], [15, 15], [15, 17]], [[20, 20], [17, 17], [17, 17]], [[23, 23], [19, 19], [20, 20]],
+             [[25, 28], [20, 20], [20, 25]], [[25, 28], [20, 25], [20, 25]], [[25, 28], [20, 25], [20, 25]],
+             [[25, 28], [20, 25], [20, 25]], [[25, 28], [20, 25], [20, 25]], [[25, 28], [20, 25], [20, 25]]]).to(device)
+
+        self.kj_total = [self.kj_total_1,self.kj_total_2,self.kj_total_3]
+        self.hz = [self.hz_1-1,self.hz_2,self.hz_3+1]
+        self.j_cm2 = [self.j_cm2_1+1,self.j_cm2_2,self.j_cm2_3-1]
 
         # FOTOTYPE MAX VALS FOR I-III
         self.hz_black = torch.Tensor([3, 30]).to(device)
@@ -33,22 +71,22 @@ class DataSet:
         self.men_area_per_bodyPart = torch.Tensor([4, 3, 8, 6, 1, 1, 6, 6, 12, 2]).to(device)
 
     def create_target(self, std):
-        kj_total_var = torch.zeros((9, 3), requires_grad=True, device=self.device)
-        hz_var = torch.zeros((9, 3), requires_grad=True, device=self.device)
-        j_cm2_var = torch.zeros((9, 3), requires_grad=True, device=self.device)
+        kj_total_var = torch.zeros((3,9, 3), requires_grad=True, device=self.device)
+        hz_var = torch.zeros((3,9, 3), requires_grad=True, device=self.device)
+        j_cm2_var = torch.zeros((3,9, 3), requires_grad=True, device=self.device)
         std = std / 100
+        for j in range(0,3):
+            for i in range(len(self.kj_total)):
+                kj_total_var[j][i][0].data.copy_(torch.normal(self.kj_total[j][i][0][0].clone(), self.kj_total[j][i][0][0].detach()) * std)
+                kj_total_var[j][i][1].data.copy_(torch.normal(self.kj_total[j][i][1][0].clone(), self.kj_total[j][i][1][0].detach()) * std)
+                kj_total_var[j][i][2].data.copy_(torch.normal(self.kj_total[j][i][2][0].clone(), self.kj_total[j][i][2][0].detach()) * std)
+                hz_var[j][i][0].data.copy_(torch.normal(self.hz[j][i][0][0].clone(), self.hz[j][i][0][0].detach()) * std)
+                hz_var[j][i][1].data.copy_(torch.normal(self.hz[j][i][1][0].clone(), self.hz[j][i][1][0].detach()) * std)
+                hz_var[j][i][2].data.copy_(torch.normal(self.hz[j][i][2][0].clone(), self.hz[j][i][2][0].detach()) * std)
 
-        for i in range(len(self.kj_total)):
-            kj_total_var[i][0].data.copy_(torch.normal(self.kj_total[i][0][0].clone(), self.kj_total[i][0][0].detach()) * std)
-            kj_total_var[i][1].data.copy_(torch.normal(self.kj_total[i][1][0].clone(), self.kj_total[i][1][0].detach()) * std)
-            kj_total_var[i][2].data.copy_(torch.normal(self.kj_total[i][2][0].clone(), self.kj_total[i][2][0].detach()) * std)
-            hz_var[i][0].data.copy_(torch.normal(self.hz[i][0][0].clone(), self.hz[i][0][0].detach()) * std)
-            hz_var[i][1].data.copy_(torch.normal(self.hz[i][1][0].clone(), self.hz[i][1][0].detach()) * std)
-            hz_var[i][2].data.copy_(torch.normal(self.hz[i][2][0].clone(), self.hz[i][2][0].detach()) * std)
-
-            j_cm2_var[i][0].data.copy_(torch.normal(self.j_cm2[i][0][0].clone(), self.j_cm2[i][0][0].detach()) * std)
-            j_cm2_var[i][1].data.copy_(torch.normal(self.j_cm2[i][1][0].clone(), self.j_cm2[i][1][0].detach()) * std)
-            j_cm2_var[i][2].data.copy_(torch.normal(self.j_cm2[i][2][0].clone(), self.j_cm2[i][2][0].detach()) * std)
+                j_cm2_var[j][i][0].data.copy_(torch.normal(self.j_cm2[j][i][0][0].clone(), self.j_cm2[j][i][0][0].detach()) * std)
+                j_cm2_var[j][i][1].data.copy_(torch.normal(self.j_cm2[j][i][1][0].clone(), self.j_cm2[j][i][1][0].detach()) * std)
+                j_cm2_var[j][i][2].data.copy_(torch.normal(self.j_cm2[j][i][2][0].clone(), self.j_cm2[j][i][2][0].detach()) * std)
 
         return kj_total_var, hz_var, j_cm2_var
 

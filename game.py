@@ -52,7 +52,6 @@ class Game:
         if self.task_id == 0:
             self.lower_limit = self.lower_limit_kj
             self.upper_limit = self.upper_limit_kj
-
             print("  SETTING UP KJ | Task id:", self.task_id)
         elif self.task_id == 1:
             self.lower_limit = self.lower_limit_hz
@@ -74,8 +73,8 @@ class Game:
                                                      self.std)
                 self.s_next, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
                 self.a_next, a_val_next, _ = self.agent.take_next_action(self.s_next,self.task_id, self.a, step_counter, dataset,game)
-                l = self.agent.train_short_memory(self.s, self.a, self.reward, self.s_next,self.a_next, self.done,self.task_id,self.ad_reward)
-                self.game.agent.remember(self.s, self.a, self.reward, self.s_next, self.a_next, self.done, self.task_id,self.ad_reward)
+                l = self.agent.train_short_memory(self.s, self.a[0],self.a[1],self.a[2], self.reward, self.s_next,self.a_next[0],self.a_next[1],self.a_next[2], self.done,self.task_id,self.ad_reward)
+                self.game.agent.remember(self.s, self.a[0],self.a[1],self.a[2], self.reward, self.s_next, self.a_next[0],self.a_next[1],self.a_next[2], self.done, self.task_id,self.ad_reward)
                 step_counter += 1
                 self.total_counter += 1
                 # self.reward += 1

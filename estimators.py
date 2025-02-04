@@ -22,16 +22,25 @@ class Estimators:
         Q_current = actor(s, task_indicator)
         critic_eval = critic(s, Q_current, task_indicator)
         with torch.no_grad():
-            Q_next = target(s_next, task_indicator).detach()
-        Q_target_updated = Q_next.clone()
+            Q_next = target(s_next.detach(), task_indicator.detach())
+
         Q_new = r.unsqueeze(-1) + ad_reward.unsqueeze(-1)
-        current_action_idx = torch.argmax(a, dim=-1)
-        next_action_idx = torch.argmax(a_next, dim=-1)
-        q_next = Q_next.gather(1, next_action_idx)
-        Q_new += self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + (1-done)*self.gamma * q_next) + done*(r.unsqueeze(-1) + ad_reward.unsqueeze(-1))
-        Q_new = 0.5 * Q_new + 0.5 * critic_eval
-        Q_target_updated.scatter_(dim=1, index=current_action_idx, src=Q_new)
-        return Q_target_updated, Q_current
+        z_t = torch.zeros_like(Q_next[0]).to(self.device)
+        #print(z_t.shape)
+        Q_target = [z_t,z_t,z_t]
+        for i in range(0,3):
+            Q_target_updated = Q_next[i].clone()
+            current_action_idx = torch.argmax(a[i], dim=-1)
+            next_action_idx = torch.argmax(a_next[i], dim=-1)
+            if next_action_idx.dim() <2:
+                next_action_idx = next_action_idx.unsqueeze(1)
+                current_action_idx = current_action_idx.unsqueeze(1)
+            q_next = Q_target_updated.gather(1, next_action_idx)
+            Q_new += self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + (1-done)*self.gamma * q_next) + done*(r.unsqueeze(-1) + ad_reward.unsqueeze(-1))
+            Q_new = 0.5 * Q_new + 0.5 * critic_eval[i]
+            Q_target_updated.scatter_(dim=1, index=current_action_idx, src=Q_new)
+            Q_target[i] = Q_target_updated
+        return Q_target, Q_current
 
     def soft_update(self, net, target_net):
         with torch.no_grad():
