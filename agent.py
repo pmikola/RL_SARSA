@@ -154,7 +154,6 @@ class Agent:
             a_next2 = torch.unsqueeze(a_next2.clone().detach(), 0).to(self.device)
             a_next3 = torch.unsqueeze(a_next3.clone().detach(), 0).to(self.device)
             a_next = [a_next1,a_next2,a_next3]
-
             r = torch.unsqueeze(torch.tensor(r, dtype=torch.float), 0).to(self.device)
             ad_reward = torch.unsqueeze(torch.tensor(ad_reward, dtype=torch.float), 0).to(self.device)
             tid = torch.unsqueeze(torch.tensor([tid]).clone().detach(), 0).to(self.device)
@@ -185,8 +184,8 @@ class Agent:
         l.backward()
         self.optimizer.step()
         abs_td_errors_ls1 = torch.abs(target[0] - prediction[0]).detach()+ 1e-8
-        abs_td_errors_ls2 = torch.abs(target[0] - prediction[0]).detach()+ 1e-8
-        abs_td_errors_ls3 = torch.abs(target[0] - prediction[0]).detach()+ 1e-8
+        abs_td_errors_ls2 = torch.abs(target[1] - prediction[1]).detach()+ 1e-8
+        abs_td_errors_ls3 = torch.abs(target[2] - prediction[2]).detach()+ 1e-8
         priorities = abs_td_errors_ls1+abs_td_errors_ls2+abs_td_errors_ls3
 
         for i, priority in enumerate(priorities):
