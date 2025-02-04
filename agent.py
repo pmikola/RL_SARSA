@@ -16,7 +16,7 @@ from binary_converter import float2bit
 class Agent:
     def __init__(self, actor,critic, target, valueFunction, no_of_states, num_e_bits, num_m_bits, device):
         self.total_counter = 0.
-        self.eps = (1e-3 + 0.95 * np.exp(-3e-4 * self.total_counter))
+        self.eps = (1e-3 + 0.95 * np.exp(-1e-2 * self.total_counter))
         self.counter = 0
         self.counter_coef = 0
         self.exp_over = 10
@@ -31,9 +31,8 @@ class Agent:
         self.n_m_bits = torch.tensor([1.] * self.num_m_bits).to(device)
         self.sign = torch.tensor([1.]).to(device)
         self.no_of_guesses = 0.
-        self.task_indicator = torch.tensor([0., 0., 0., 0.]).to(device)
         self.BATCH_SIZE = 64
-        self.MAX_MEMORY = 100_000
+        self.MAX_MEMORY = 20000
         self.MAX_PRIORITY = torch.tensor(1.).to(device)
         self.vF = valueFunction
         self.memory = deque(maxlen=self.MAX_MEMORY)  # popleft()
@@ -50,9 +49,6 @@ class Agent:
             weight_decay=1e-6,
             amsgrad=True
         )
-        # self.optimizer2 = torch.optim.Adam(self.target.parameters(), lr=1e-3, betas=(0.9, 0.999), eps=1e-08,
-        #                                    weight_decay=5e-3, amsgrad=True)
-
         self.Q_MAX = 0.
         self.lossMSE = nn.MSELoss().to(self.device)
         self.lossL1 = nn.L1Loss().to(self.device)
@@ -60,8 +56,8 @@ class Agent:
         self.lossKLD = nn.KLDivLoss(reduction="batchmean", log_target=True).to(device)
         # self.loss2 = nn.MSELoss(reduction='sum').to(self.device)
 
-    def remember(self, state, action, reward, next_state, a_next, done, task_indicator, ad_reward):
-        self.memory.append((state, action, reward, next_state, a_next, done, task_indicator, ad_reward, self.MAX_PRIORITY))
+    def remember(self, state, action, reward, next_state, a_next, done, task_id, ad_reward):
+        self.memory.append((state, action, reward, next_state, a_next, done, task_id, ad_reward, self.MAX_PRIORITY))
 
     def train_short_memory(self, state, action, reward, next_state, a_next, done, tid, ad_reward):
         if len(self.memory) > 0:
@@ -104,7 +100,7 @@ class Agent:
             # time.sleep(1)
             s, a, r, s_next, a_next, d, tid, p, ad_reward = zip(*mini_sample)
             l = self.train_step(s, a, r, s_next, a_next, d, tid, ad_reward)
-        if total_counter % 5 == 0 and len(self.memory) > self.BATCH_SIZE:
+        elif total_counter % 3 == 0 and len(self.memory) > self.BATCH_SIZE:
             # PRIORITY HIGH LOSS EXPERIENCE REPLAY
             if k == 1:
                 print("PRIORITY")
@@ -144,7 +140,7 @@ class Agent:
             a_next = torch.unsqueeze(a_next.clone().detach(), 0).to(self.device)
             r = torch.unsqueeze(torch.tensor(r, dtype=torch.float), 0).to(self.device)
             ad_reward = torch.unsqueeze(torch.tensor(ad_reward, dtype=torch.float), 0).to(self.device)
-            tid = torch.unsqueeze(tid.clone().detach(), 0).to(self.device)
+            tid = torch.unsqueeze(torch.tensor([tid]).clone().detach(), 0).to(self.device)
             done = torch.unsqueeze(done.clone().detach(), 0).to(self.device)
         else:
             s = torch.stack(list(s), dim=0).clone().detach().to(self.device)
@@ -153,15 +149,14 @@ class Agent:
             ad_reward = torch.stack(list(torch.tensor(ad_reward, dtype=torch.float))).clone().detach().to(self.device)
             s_next = torch.stack(list(s_next), dim=0).clone().detach().to(self.device)
             a_next = torch.stack(list(a_next), dim=0).clone().detach().to(self.device)
-            tid = torch.stack(list(tid), dim=0).clone().detach().to(self.device)
+            tid = torch.stack(list(torch.tensor([tid])), dim=0).clone().detach().to(self.device)
             done = torch.stack(list(done), dim=0).clone().detach().to(self.device)
 
         target, prediction = self.vF.Q_value(self.actor,self.critic, self.target, s, a, r, s_next, a_next, done,tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
 
         self.optimizer.zero_grad()
-        lossHubert = self.lossHuber(target, prediction)
-        l = lossHubert
+        l = self.lossHuber(target, prediction)
         l.backward()
         self.optimizer.step()
         abs_td_errors = torch.abs(target - prediction).detach()
@@ -172,14 +167,7 @@ class Agent:
             p = torch.max(priority)
             updated_experience = (*experience[:-1], p)
             self.memory[i] = updated_experience
-
-            # LOSS AS BIT ARRAY STATE INPUT
-            # self.loss2state( i, p, updated_experience)
-
         self.vF.soft_update(self.actor, self.target)
-
-        # if state_a != state_b:
-        #    print("LAYERS WEIGHT SUM:", self.net.layers[0].weight.sum())
 
         ###### COMPUTATIONAL GRAPH GENERATION ######
         # dot = make_dot(prediction, params=dict(self.net.named_parameters()))
@@ -187,30 +175,29 @@ class Agent:
 
         return l.item()
 
-    def take_action(self, s, step_counter, dataset, game):
+    def take_action(self, s,task_id, step_counter, dataset, game):
         _, _, body_part = dataset.decode_input(s)
-
-        actions, is_random_next = self.chooseAction(s, dataset, game)
+        actions, is_random_next = self.chooseAction(s,task_id, dataset, game)
         if is_random_next == 1:
             self.no_of_guesses += 1
-            a = game.agent.value2action(self.actions, self.actor.no_of_heads,
+            a = game.agent.value2action(actions, self.actor.no_of_actions,
                                         game.lower_limit, game.upper_limit)
             a = torch.unsqueeze(a, dim=0)
         else:
-            a = self.actions
-        a_value = game.agent.action2value(a, self.actor.no_of_heads, game.lower_limit, game.upper_limit)
+            a = actions
+        a_value = game.agent.action2value(a, self.actor.no_of_actions, game.lower_limit, game.upper_limit)
         return a, a_value, body_part
 
-    def take_next_action(self, s_next, action, step_counter, dataset, game):
+    def take_next_action(self, s_next,task_id, action, step_counter, dataset, game):
         _, _, body_part = dataset.decode_input(s_next)
-        actions, is_random_next = self.chooseNextAction(s_next, action, dataset, game)
+        actions, is_random_next = self.chooseNextAction(s_next,task_id, action, dataset, game)
         if is_random_next == 1:
             self.no_of_guesses += 1
-            a = game.agent.value2action(self.actions, self.actor.no_of_heads,game.lower_limit, game.upper_limit)
+            a = game.agent.value2action(actions, self.actor.no_of_actions, game.lower_limit, game.upper_limit)
             a = torch.unsqueeze(a, dim=0)
         else:
-            a = self.actions
-        a_value = game.agent.action2value(a, self.actor.no_of_heads, game.lower_limit, game.upper_limit)
+            a = actions
+        a_value = game.agent.action2value(a, self.actor.no_of_actions, game.lower_limit, game.upper_limit)
         return a, a_value, body_part
 
     def get_state(self, step_counter, dataset):
@@ -224,7 +211,7 @@ class Agent:
             game_over = False
         s = torch.cat((patient, turn, done), dim=0)
         s = torch.cat((s, s), dim=0)
-        s +=s*torch.rand_like(s)*self.eps*1e-1
+        s +=s*torch.rand_like(s)*self.eps*(1e-2/self.vF.epsilon)
         # print(s)
         return s, done, game_over
 
@@ -244,41 +231,33 @@ class Agent:
         result = torch.sum((n - 1) * input * indices, dim=-1)
         return result
 
-    def chooseAction(self, state, dataset, game):
+    def chooseAction(self, state,task_id, dataset, game):
         is_random = 0
         explore_coef = self.vF.epsilon
         hair_type, skin_type, _ = dataset.decode_input(state)
-        if game.cycle >= game.game_cycles - 2:
-            explore_coef = self.counter_coef + 1 * 1000.
-        else:
-            pass
-        self.eps = (1e-5 + 0.95 * np.exp(-5e-4 * self.total_counter))
+        self.eps = (1e-6 + 0.99 * np.exp(-1e-2 * self.total_counter))
         if   np.random.uniform(0,self.eps) > explore_coef:
-            self.actions = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
+            actions = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
             is_random = 1
         else:
             state = state.to(self.device)
-            self.actions = self.actor(state, self.task_indicator)
-        return self.actions, is_random
+            actions = self.actor(state, task_id)
+        return actions, is_random
 
-    def chooseNextAction(self, state_next, action, dataset, game):
+    def chooseNextAction(self, state_next,task_id, action, dataset, game):
         is_random = 0
         explore_coef = self.vF.epsilon
         hair_type, skin_type, _ = dataset.decode_input(state_next)
-        if game.cycle >= game.game_cycles - 2:
-            explore_coef = self.counter_coef + 1 * 1000.
-        else:
-            pass
-        self.eps = (1e-5 + 0.95 * np.exp(-5e-4 * self.total_counter))
+        self.eps = (1e-6 + 0.99 * np.exp(-1e-2 * self.total_counter))
         if  np.random.uniform(0,self.eps) > explore_coef:
             self.act = np.random.uniform(-1., 1.)
             mean = (game.lower_limit + game.upper_limit) / 2
-            self.actions = torch.tensor(np.arcsin(self.act)*mean + mean).to(self.device)
+            actions = torch.tensor(np.arcsin(self.act)*mean + mean).to(self.device)
             is_random = 1
         else:
             state_next = state_next.to(self.device)
-            self.actions = self.actor(state_next, self.task_indicator)
-        return self.actions, is_random
+            actions = self.actor(state_next, task_id)
+        return actions, is_random
 
     def action2value(self, action, num_of_actions, lower_limit, upper_limit):
         action_space = torch.arange(lower_limit, upper_limit, (upper_limit - lower_limit) / num_of_actions)
@@ -286,58 +265,43 @@ class Agent:
         return action_space[max_value_ind]
 
     def value2action(self, action_value, num_of_actions, lower_limit, upper_limit):
-        action_space = torch.arange(lower_limit, upper_limit, (upper_limit - lower_limit) / num_of_actions).to(
-            self.device)
+        action_space = torch.arange(lower_limit, upper_limit, (upper_limit - lower_limit) / num_of_actions).to(self.device)
         idx = torch.argmin(torch.abs(action_space - action_value)).int()
         action_space = torch.zeros_like(action_space).to(self.device)
-        action_space[idx] = 1.
+        action_space[idx] = 10
         return action_space
 
-    def checkReward(self, reward, action, state, dataset, step_counter, game, lower_limit, upper_limit, std):
+    def checkReward(self, reward, action_value, state, dataset, step_counter, game, lower_limit, upper_limit, std):
         hair_type, skin_type, body_part = dataset.decode_input(state)
-
-        if game.task_id == 0.:
+        if game.task_id == 0:
             ref_value = torch.sum(dataset.kj_total[step_counter][body_part]) / 2
-        elif game.task_id == 1.:
+        elif game.task_id == 1:
             ref_value = torch.sum(dataset.hz[step_counter][body_part]) / 2
         else:
             ref_value = torch.sum(dataset.j_cm2[step_counter][body_part]) / 2
         ref_value_min = ref_value - ref_value * std / 100
         ref_value_max = ref_value + ref_value * std / 100
-        reward_factor = torch.abs(ref_value - action).item()
-        reward_factor_0 = torch.abs(0. - action).item()
-        # print(action)
-        # rf = -(reward_factor + 1e-8) / abs(upper_limit - lower_limit)
-        # rf_0 = -(reward_factor_0 + 1e-8) / abs(upper_limit - lower_limit)
         r = 0.1
         additional_reward = 0.
         if game.cycle > self.exp_over:
             # MAIN TASK -> TRAINING
-            self.task_indicator[0] = torch.tensor([1.]).to(self.device)
             if step_counter == 0:
                 self.c = not self.c
                 # print(self.counter)
-            if self.c == 1:
-                r_0 = 5.
-                r_a = 5.
-            else:
-                r_0 = 5.
-                r_a = 5.
             if skin_type > 2 or hair_type > 1:
-                if action >= 1.:
-                    reward -= 0.  # r * r_0  # + rf_0
+                if action_value >= 1.:
+                    additional_reward -= -1.  # r * r_0  # + rf_0
                 else:
                     reward += 1.  # r * r_0
             else:
-                if ref_value_min < action < ref_value_max:
+                if ref_value_min < action_value < ref_value_max:
                     reward += 1.  # r * r_a  # + rf
                 else:
                     # ommiting negarive rewards better regarding Q value without mean/sum estimate??
-                    reward -= 0.  # r * r_a  # + rf
+                    additional_reward -= 1.  # r * r_a  # + rf
         else:
             # PRE-TRAINING WITH SIMPLER TASK
-            self.task_indicator[0] = torch.tensor([0.]).to(self.device)
-            if ref_value_min < action < ref_value_max:
+            if ref_value_min < action_value < ref_value_max:
                 reward += r * 10.  # + rf
             else:
                 reward -= 0.  # r * 10. #+ rf

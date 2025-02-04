@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.ticker import MaxNLocator
+from numpy import argmin
 from torch import optim
 
 from agent import Agent
@@ -20,12 +21,11 @@ from neuralNetwork import NeuralNetwork_SA, NeuralNetwork_S
 no_of_actions = 256
 num_e_bits = 5
 num_m_bits = 10
-
 no_of_states = 14  # + num_e_bits + num_m_bits
 alpha = 1.
-epsilon = 0.1
-gamma = 0.85
-tau = 0.001
+epsilon = 1e-2
+gamma = 0.95
+tau = 0.01
 no_of_games = 50
 no_of_rounds = 9
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -38,6 +38,7 @@ np.random.seed(2023)
 actor = NeuralNetwork_S(no_of_actions, no_of_states, device)
 target = NeuralNetwork_S(no_of_actions, no_of_states, device)
 critic = NeuralNetwork_SA(no_of_actions, no_of_states, device)
+critic.task_indicator = actor.task_indicator
 actor.to(device)
 target.to(device)
 critic.to(device)
@@ -58,34 +59,43 @@ loss = []
 c_map_data = []
 total_time = 0.
 ax = plt.figure().gca()
+r = [0,0,0]
 for i in range(1, game.game_cycles + 1):
     game.cycle = i
     start = time.time()
     print("GAME CYCLE : ", i)
     rewards, a_val, losses = game.playntrain(game, dataset, games=no_of_games)
-    print("  REWARDS TOTAL : ", sum(rewards), " ||  RANDOM GUESSES: ",
+    R = sum(rewards)
+    print("  REWARDS TOTAL : ",R, " ||  RANDOM GUESSES: ",
           game.agent.no_of_guesses)
     end = time.time()
     t = end - start
     total_time += t
     print("  Elapsed time : ", t, " [s]")
     print("----------------------------------")
-    game.task_id = float(random.randint(0,2))
+    if game.task_id == 0:
+        r[0] = R
+    elif game.task_id == 1:
+        r[1] = R
+    else:
+        r[2] = R
+
+    game.total_counter = 0
+    game.agent.vF.epsilon+=(1/(game.game_cycles*2))
+    game.task_id = random.randint(0,2)
+    if game.cycle % 3 == 0:
+        game.task_id = int(argmin(r))
     # Note: test  network with learning on
     if game.cycle >= game.game_cycles - 3:
-        game.task_id = 0.
-        game.valueFunction.epsilon = 1.-1e-3
+        game.total_counter = 1e10
+        game.task_id = 0
     if game.cycle >= game.game_cycles - 2:
-        game.task_id = 1.
-        game.valueFunction.epsilon = 1.-1e-3
+        game.total_counter = 1e10
+        game.task_id = 1
     if game.cycle >= game.game_cycles - 1:
-        game.task_id = 2.
-        game.valueFunction.epsilon = 1.-1e-3
+        game.total_counter = 1e10
+        game.task_id = 2
 
-    if game.cycle % 10 == 0:
-        game.agent.counter_coef = 0
-    game.agent.counter_coef += 1
-    # game.net = net
     r_data.append(rewards)
     a_data.append(a_val)
     l_data.append("Epoch: " + str(i))
