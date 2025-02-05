@@ -1,3 +1,4 @@
+import random
 import time
 
 import torch
@@ -17,6 +18,7 @@ class Estimators:
         self.device = device
         self.tau = tau
         self.n_steps = n_steps
+        self.counter = 0
 
     def Q_value(self, actor, critic, target, s, a, r, s_next, a_next, done, task_indicator, ad_reward):
         Q_current = actor(s, task_indicator)
@@ -28,18 +30,40 @@ class Estimators:
         z_t = torch.zeros_like(Q_next[0]).to(self.device)
         #print(z_t.shape)
         Q_target = [z_t,z_t,z_t]
+        if self.counter > 4e4:
+            id =-1
+        else:
+            id = random.randint(0, 2)
+        self.counter += 1
+        importance = 0.
         for i in range(0,3):
-            Q_target_updated = Q_next[i].clone()
-            current_action_idx = torch.argmax(a[i], dim=-1)
-            next_action_idx = torch.argmax(a_next[i], dim=-1)
-            if next_action_idx.dim() <2:
-                next_action_idx = next_action_idx.unsqueeze(1)
-                current_action_idx = current_action_idx.unsqueeze(1)
-            q_next = Q_target_updated.gather(1, next_action_idx)
-            Q_new += self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + (1-done)*self.gamma * q_next) + done*(r.unsqueeze(-1) + ad_reward.unsqueeze(-1))
-            Q_new = 0.5 * Q_new + 0.5 * critic_eval[i]
-            Q_target_updated.scatter_(dim=1, index=current_action_idx, src=Q_new)
-            Q_target[i] = Q_target_updated
+            if id != i:
+                Q_target_updated = Q_next[i].clone()
+                current_action_idx = torch.argmax(a[i], dim=-1)
+                next_action_idx = torch.argmax(a_next[i], dim=-1)
+                if next_action_idx.dim() <2:
+                    next_action_idx = next_action_idx.unsqueeze(1)
+                    current_action_idx = current_action_idx.unsqueeze(1)
+                q_next = Q_target_updated.gather(1, next_action_idx)
+                Q_new += self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + (1-done)*self.gamma * q_next) + done*(r.unsqueeze(-1) + ad_reward.unsqueeze(-1))
+                Q_new = 0.5 * Q_new + 0.5 * critic_eval[i]
+                Q_target_updated.scatter_(dim=1, index=current_action_idx, src=Q_new)
+                Q_target[i] = Q_target_updated
+            else:
+                Q_target_updated = Q_next[i].clone()
+                current_action_idx = torch.argmax(a[i], dim=-1)
+                next_action_idx = torch.argmax(a_next[i], dim=-1)
+                if next_action_idx.dim() < 2:
+                    next_action_idx = next_action_idx.unsqueeze(1)
+                    current_action_idx = current_action_idx.unsqueeze(1)
+                q_next = Q_target_updated.gather(1, next_action_idx)
+                Q_new += self.alpha * (
+                            (r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + (1 - done) * self.gamma * q_next) + done * (
+                                     r.unsqueeze(-1) + ad_reward.unsqueeze(-1))
+                Q_new = 0.5 * Q_new + 0.5 * critic_eval[i]
+                Q_target_updated.scatter_(dim=1, index=current_action_idx, src=Q_new)
+                Q_target[i] = Q_target_updated*importance
+                Q_current[i] = Q_current[i]*importance
         return Q_target, Q_current
 
     def soft_update(self, net, target_net):

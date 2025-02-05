@@ -198,7 +198,6 @@ class Agent:
         ###### COMPUTATIONAL GRAPH GENERATION ######
         # dot = make_dot(prediction, params=dict(self.net.named_parameters()))
         # dot.render(directory='doctest-output', view=True)
-
         return l.item()
 
     def take_action(self, s,task_id, step_counter, dataset, game):
@@ -346,38 +345,53 @@ class Agent:
         ref_value_max_s3 = ref_value_s3 + ref_value_s3 * std / 100
         r = 0.1
         additional_reward = 0.
-        # if game.cycle > self.exp_over:
-        #     # MAIN TASK -> TRAINING
-        if step_counter == 0:
-            self.c = not self.c
-            # print(self.counter)
-        if skin_type > 2 or hair_type > 1:
-            if action_value[0] >= 1.:
-                additional_reward -= -1.
+        if game.cycle > self.exp_over:
+            # MAIN TASK -> TRAINING
+            if step_counter == 0:
+                self.c = not self.c
+                # print(self.counter)
+            if skin_type > 2 or hair_type > 1:
+                if action_value[0] >= 1.:
+                    additional_reward -= -0
+                else:
+                    reward += 1.
+                if action_value[1] >= 1.:
+                    additional_reward -= -0
+                else:
+                    reward += 1.
+                if action_value[2] >= 1.:
+                    additional_reward -= -0
+                else:
+                    reward += 1.
             else:
-                reward += 1.
-            if action_value[1] >= 1.:
-                additional_reward -= -1.
-            else:
-                reward += 1.
-            if action_value[2] >= 1.:
-                additional_reward -= -1.
-            else:
-                reward += 1.
+                if ref_value_min_s1 < action_value[0] < ref_value_max_s1:
+                    reward += 1.
+                else:
+                    additional_reward -= 0
+
+                if ref_value_min_s2 < action_value[1] < ref_value_max_s2:
+                    reward += 1.
+                else:
+                    additional_reward -= 0
+                if ref_value_min_s3 < action_value[2] < ref_value_max_s3:
+                    reward += 1.
+                else:
+                    additional_reward -= 0
         else:
             if ref_value_min_s1 < action_value[0] < ref_value_max_s1:
                 reward += 1.
             else:
-                additional_reward -= 1.
+                additional_reward -= 1
 
             if ref_value_min_s2 < action_value[1] < ref_value_max_s2:
                 reward += 1.
             else:
-                additional_reward -= 1.
+                additional_reward -= 1
             if ref_value_min_s3 < action_value[2] < ref_value_max_s3:
                 reward += 1.
             else:
-                additional_reward -= 1.
+                additional_reward -= 1
+
 
         if step_counter == 8 and reward*0.3 >= 5:
             additional_reward = 1.

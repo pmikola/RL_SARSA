@@ -148,7 +148,11 @@ class NeuralNetwork_SA(nn.Module):
         self.linear1 = nn.Linear(self.input, self.input*2, bias=True)
         self.linear2 = nn.Linear(self.input*2, self.hidden_size*2, bias=True)
         self.linear3 = nn.Linear(self.hidden_size*2, self.hidden_size, bias=True)
-        self.linear4 = nn.Linear(self.hidden_size, self.no_of_actions, bias=True)
+        self.linear4_1 = nn.Linear(self.hidden_size, self.no_of_actions, bias=True)
+
+        self.linear4_2 = nn.Linear(self.hidden_size, self.no_of_actions, bias=True)
+        self.linear4_3 = nn.Linear(self.hidden_size, self.no_of_actions, bias=True)
+
         self.linear5_1 = nn.Linear(self.no_of_actions, 1, bias=True)
         self.linear5_2 = nn.Linear(self.no_of_actions, 1, bias=True)
         self.linear5_3 = nn.Linear(self.no_of_actions, 1, bias=True)
@@ -156,7 +160,10 @@ class NeuralNetwork_SA(nn.Module):
         self.LNorm1 = nn.LayerNorm(self.input*2)
         self.LNorm2 = nn.LayerNorm(self.hidden_size*2)
         self.LNorm3 = nn.LayerNorm(self.hidden_size )
-        self.LNorm4 = nn.LayerNorm(self.no_of_actions)
+        self.LNorm4_1 = nn.LayerNorm(self.no_of_actions)
+        self.LNorm4_2 = nn.LayerNorm(self.no_of_actions)
+        self.LNorm4_3 = nn.LayerNorm(self.no_of_actions)
+
         self.apply(self._init_weights)
 
     def forward(self, state, action, t_id):
@@ -188,11 +195,17 @@ class NeuralNetwork_SA(nn.Module):
         x = self.act(self.linear3(x))
         x = self.LNorm3(x)
 
-        x = self.act(self.linear4(x))
-        x = self.LNorm4(x)
-        x1 = self.linear5_1(x)
-        x2 = self.linear5_2(x)
-        x3 = self.linear5_3(x)
+        x1 = self.act(self.linear4_1(x))
+        x2 = self.act(self.linear4_2(x))
+        x3 = self.act(self.linear4_3(x))
+
+        x1 = self.LNorm4_1(x1)
+        x2 = self.LNorm4_2(x2)
+        x3 = self.LNorm4_3(x3)
+
+        x1 = self.linear5_1(x1)
+        x2 = self.linear5_2(x2)
+        x3 = self.linear5_3(x3)
         x = [x1, x2, x3]
         return x
 
