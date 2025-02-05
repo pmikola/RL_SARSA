@@ -112,8 +112,8 @@ print("Total time : ", total_time / 60, "[min]")
 
 ax.hist(r_data, alpha=0.65, stacked=False, histtype='bar', label=l_data, color=c_map_data)
 ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-ax.legend(prop={'size': 6}, loc='upper center', bbox_to_anchor=(0.5, 1.14),
-          ncol=9, fancybox=True, shadow=True)
+# ax.legend(prop={'size': 6}, loc='upper center', bbox_to_anchor=(0.5, 1.14),
+#           ncol=9, fancybox=True, shadow=True)
 
 plt.xlabel("Reward value per game")
 plt.ylabel("No. of games")

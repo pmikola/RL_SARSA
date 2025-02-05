@@ -30,7 +30,7 @@ class Estimators:
         z_t = torch.zeros_like(Q_next[0]).to(self.device)
         #print(z_t.shape)
         Q_target = [z_t,z_t,z_t]
-        if self.counter > 4e4:
+        if self.counter > 3e4:
             id =-1
         else:
             id = random.randint(0, 2)

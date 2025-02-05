@@ -17,7 +17,7 @@ class NeuralNetwork_S(nn.Module):
         super(NeuralNetwork_S, self).__init__()
         self.no_of_actions = no_of_actions
         self.no_of_states = no_of_states
-        self.hidden_size = 512
+        self.hidden_size = 1024
         self.device = device
         self.modulation_resolution = 10
         self.modulation_scale = 2
@@ -25,9 +25,12 @@ class NeuralNetwork_S(nn.Module):
         self.hidden_state = self.input + self.hidden_size
         self.act = nn.ELU(2)
 
-        self.linear1 = nn.Linear(self.input, self.hidden_size * 4, bias=True)
-        self.linear2 = nn.Linear(self.hidden_size * 4 + self.input, self.hidden_size * 2, bias=True)
-        self.linear3 = nn.Linear(self.hidden_size * 2 + self.input, self.hidden_size * 2, bias=True)
+        self.linear1 = nn.Linear(self.input, self.hidden_size, bias=True)
+        self.linear2 = nn.Linear(self.hidden_size + self.input, self.hidden_size * 2, bias=True)
+
+        self.res_blocks = nn.Sequential(
+            *[ResidualBlock(self.hidden_size * 2, dropout=0.1) for _ in range(5)]
+        )
         self.linear4 = nn.Linear(self.hidden_size * 2 + self.input, self.hidden_size, bias=True)
 
         self.ls_01 = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
@@ -42,7 +45,7 @@ class NeuralNetwork_S(nn.Module):
         self.ls2 = nn.Linear(self.hidden_size//2, self.no_of_actions, bias=True)
         self.ls3 = nn.Linear(self.hidden_size//2, self.no_of_actions, bias=True)
 
-        self.LNorm1 = nn.LayerNorm(self.hidden_size * 4)
+        self.LNorm1 = nn.LayerNorm(self.hidden_size)
         self.LNorm2 = nn.LayerNorm(self.hidden_size * 2)
         self.LNorm3 = nn.LayerNorm(self.hidden_size * 2)
         self.LNorm4 = nn.LayerNorm(self.hidden_size)
@@ -74,9 +77,7 @@ class NeuralNetwork_S(nn.Module):
         x = self.act(self.linear2(x))
         x = self.LNorm2(x)
 
-        x = torch.cat((x, state), dim=1)
-        x = self.act(self.linear3(x))
-        x = self.LNorm3(x)
+        x = self.res_blocks(x)
 
         x = torch.cat((x, state), dim=1)
         x = self.act(self.linear4(x))
@@ -228,4 +229,34 @@ class NeuralNetwork_SA(nn.Module):
         modulation_strength = ((modulation_idx + 1) / self.modulation_resolution) * self.modulation_scale
         modulated = input_vector * modulation_strength.unsqueeze(1)
         return modulated
+
+class ResidualBlock(nn.Module):
+    def __init__(self, in_dim, out_dim=None, hidden_dim=None, dropout=0.0):
+        super().__init__()
+        if out_dim is None:
+            out_dim = in_dim
+        if hidden_dim is None:
+            hidden_dim = max(in_dim, out_dim)
+
+        self.norm1 = nn.LayerNorm(in_dim)
+        self.fc1 = nn.Linear(in_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, out_dim)
+        self.norm2 = nn.LayerNorm(out_dim)
+
+        self.act = nn.ELU(2)  # or nn.Mish()
+        self.dropout = nn.Dropout(dropout)
+
+        if in_dim == out_dim:
+            self.proj = nn.Identity()
+        else:
+            self.proj = nn.Linear(in_dim, out_dim)
+
+    def forward(self, x):
+        out = self.norm1(x)
+        out = self.act(self.fc1(out))
+        out = self.dropout(out)
+        out = self.fc2(out)
+        out = self.dropout(out)
+        x = self.proj(x)
+        return x + out
 
