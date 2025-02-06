@@ -181,29 +181,29 @@ class Agent:
             tid = torch.stack(list(torch.tensor([tid])), dim=0).clone().detach().to(self.device)
             done = torch.stack(list(done), dim=0).clone().detach().to(self.device)
 
-        target, prediction = self.vF.Q_value(self.actor,self.critic, self.target, s, a, r, s_next, a_next, done,tid, ad_reward)
+        target, advantage = self.vF.Q_value(self.actor, self.critic, self.target, s, a, r, s_next, a_next, done, tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
 
         self.optimizer_critic.zero_grad()
-        l = self.lossHuber(target[0], prediction[0])
+        l = self.lossHuber(target[0], advantage[0])
         for i in range(1,3):
-            l += self.lossHuber(target[i], prediction[i])
+            l += self.lossHuber(target[i], advantage[i])
         l.backward()
         self.optimizer_critic.step()
-        abs_td_errors_ls1 = torch.abs(target[0] - prediction[0]).detach()+ 1e-8
-        abs_td_errors_ls2 = torch.abs(target[1] - prediction[1]).detach()+ 1e-8
-        abs_td_errors_ls3 = torch.abs(target[2] - prediction[2]).detach()+ 1e-8
+        abs_td_errors_ls1 = torch.abs(target[0] - advantage[0]).detach() + 1e-8
+        abs_td_errors_ls2 = torch.abs(target[1] - advantage[1]).detach() + 1e-8
+        abs_td_errors_ls3 = torch.abs(target[2] - advantage[2]).detach() + 1e-8
         priorities = abs_td_errors_ls1+abs_td_errors_ls2+abs_td_errors_ls3
 
         # Note : Prediction is Advantage
         a = self.actor(s,tid)
         log_probs = torch.log(a[0]+1e-8).squeeze(1)
         log_probs_for_action = log_probs.gather(1, a[0].squeeze(1).long())
-        actor_loss = -(log_probs_for_action * prediction[0].detach()).mean()
+        actor_loss = -(log_probs_for_action * advantage[0].detach()).mean()
         for i in range(1, 3):
             log_probs = torch.log(a[i]+1e-8).squeeze(1)
             log_probs_for_action = log_probs.gather(1, a[i].squeeze(1).long())
-            actor_loss += -(log_probs_for_action * prediction[i].detach()).mean()
+            actor_loss += -(log_probs_for_action * advantage[i].detach()).mean()
 
         self.optimizer_actor.zero_grad()
         actor_loss.backward()
@@ -366,7 +366,7 @@ class Agent:
         ref_value_max_s2 = ref_value_s2 + ref_value_s2 * std / 100
         ref_value_min_s3 = ref_value_s3 - ref_value_s3 * std / 100
         ref_value_max_s3 = ref_value_s3 + ref_value_s3 * std / 100
-        no_steps = 10
+        no_steps = 100
         strength_coeff_r = 1.
         strength_coeff_p = 1.
         additional_reward = 0.
@@ -380,65 +380,27 @@ class Agent:
         punishment_table_0 = (torch.exp(punishment_table_0 * strength_coeff_p) - 1) / (torch.exp(torch.tensor(strength_coeff_p).to(self.device)) - 1)
         punishment_table_1 = (torch.exp(punishment_table_1 * strength_coeff_p) - 1) / (torch.exp(torch.tensor(strength_coeff_p).to(self.device)) - 1)
         punishment_table = torch.cat([punishment_table_0, punishment_table_1], dim=0)
-        if game.cycle > self.exp_over:
-            # MAIN TASK -> TRAINING
-            if step_counter == 0:
-                self.c = not self.c
-                # print(self.counter)
-            if skin_type > 2 or hair_type > 1:
-                if action_value[0] >= 1.:
-                    additional_reward -= -1
-                else:
-                    reward += 1.
-                if action_value[1] >= 1.:
-                    additional_reward -= -1
-                else:
-                    reward += 1.
-                if action_value[2] >= 1.:
-                    additional_reward -= -1
-                else:
-                    reward += 1.
+
+        if step_counter == 0:
+            self.c = not self.c
+            # print(self.counter)
+        if skin_type > 2 or hair_type > 1:
+            if action_value[0] >= 1.:
+                additional_reward -= -1
             else:
-                if ref_value_min_s1 < action_value[0] < ref_value_max_s1:
-                    distance_vals = torch.linspace(ref_value_min_s1,ref_value_max_s1, no_steps)
-                    distance_vals = torch.abs(distance_vals/action_value[0] - 1)
-                    r_idx = torch.argmin(distance_vals)
-                    reward += reward_table[r_idx].item()
-                else:
-                    distance_vals_min = torch.linspace(game.lower_limit, ref_value_min_s1, no_steps // 2)
-                    distance_vals_max = torch.linspace(ref_value_max_s1, game.upper_limit, no_steps // 2)
-                    distance_vals = torch.cat([distance_vals_min, distance_vals_max])
-                    distance_vals = torch.abs(distance_vals / action_value[0] - 1)
-                    p_idx = torch.argmin(distance_vals)
-                    additional_reward -= punishment_table[p_idx].item()
-                if ref_value_min_s2 < action_value[1] < ref_value_max_s2:
-                    distance_vals = torch.linspace(ref_value_min_s2, ref_value_max_s2, no_steps)
-                    distance_vals = torch.abs(distance_vals / action_value[1] - 1)
-                    r_idx = torch.argmin(distance_vals)
-                    reward += reward_table[r_idx].item()
-                else:
-                    distance_vals_min = torch.linspace(game.lower_limit, ref_value_min_s2, no_steps // 2)
-                    distance_vals_max = torch.linspace(ref_value_max_s2, game.upper_limit, no_steps // 2)
-                    distance_vals = torch.cat([distance_vals_min, distance_vals_max])
-                    distance_vals = torch.abs(distance_vals / action_value[1] - 1)
-                    p_idx = torch.argmin(distance_vals)
-                    additional_reward -= punishment_table[p_idx].item()
-                if ref_value_min_s3 < action_value[2] < ref_value_max_s3:
-                    distance_vals = torch.linspace(ref_value_min_s3, ref_value_max_s3, no_steps)
-                    distance_vals = torch.abs(distance_vals / action_value[2] - 1)
-                    r_idx = torch.argmin(distance_vals)
-                    reward += reward_table[r_idx].item()
-                else:
-                    distance_vals_min = torch.linspace(game.lower_limit, ref_value_min_s3, no_steps // 2)
-                    distance_vals_max = torch.linspace(ref_value_max_s3, game.upper_limit, no_steps // 2)
-                    distance_vals = torch.cat([distance_vals_min, distance_vals_max])
-                    distance_vals = torch.abs(distance_vals / action_value[2] - 1)
-                    p_idx = torch.argmin(distance_vals)
-                    additional_reward -= punishment_table[p_idx].item()
+                reward += 1.
+            if action_value[1] >= 1.:
+                additional_reward -= -1
+            else:
+                reward += 1.
+            if action_value[2] >= 1.:
+                additional_reward -= -1
+            else:
+                reward += 1.
         else:
             if ref_value_min_s1 < action_value[0] < ref_value_max_s1:
-                distance_vals = torch.linspace(ref_value_min_s1, ref_value_max_s1, no_steps)
-                distance_vals = torch.abs(distance_vals / action_value[0] - 1)
+                distance_vals = torch.linspace(ref_value_min_s1,ref_value_max_s1, no_steps)
+                distance_vals = torch.abs(distance_vals/action_value[0] - 1)
                 r_idx = torch.argmin(distance_vals)
                 reward += reward_table[r_idx].item()
             else:
@@ -466,12 +428,13 @@ class Agent:
                 r_idx = torch.argmin(distance_vals)
                 reward += reward_table[r_idx].item()
             else:
-                distance_vals_min = torch.linspace(game.lower_limit, ref_value_min_s3, no_steps//2)
-                distance_vals_max = torch.linspace(ref_value_max_s3,game.upper_limit, no_steps//2)
+                distance_vals_min = torch.linspace(game.lower_limit, ref_value_min_s3, no_steps // 2)
+                distance_vals_max = torch.linspace(ref_value_max_s3, game.upper_limit, no_steps // 2)
                 distance_vals = torch.cat([distance_vals_min, distance_vals_max])
                 distance_vals = torch.abs(distance_vals / action_value[2] - 1)
                 p_idx = torch.argmin(distance_vals)
                 additional_reward -= punishment_table[p_idx].item()
+
 
         if step_counter == 8 and reward >= 5:
             additional_reward = 1.
