@@ -21,11 +21,17 @@ class Estimators:
         self.counter = 0
 
     def Q_value(self, actor, critic, target, s, a, r, s_next, a_next, done, task_indicator, ad_reward):
-        Q_current = actor(s, task_indicator)
-        critic_eval = critic(s, Q_current, task_indicator)
+        #actor_actions = actor(s, task_indicator)
+        a_p = []
+        for i in range(0, 3):
+            a_p.append(a[i])
+        Q_current = critic(s, a_p, task_indicator)
+        #print(target.__class__.__name__)
         with torch.no_grad():
-            Q_next = target(s_next.detach(), task_indicator.detach())
-
+            a_n =[]
+            for i in range(0, 3):
+                a_n.append(a_next[i].detach())
+            Q_next = target(s_next.detach(),a_n, task_indicator.detach())
         Q_new = r.unsqueeze(-1) + ad_reward.unsqueeze(-1)
         z_t = torch.zeros_like(Q_next[0]).to(self.device)
         #print(z_t.shape)
@@ -46,7 +52,6 @@ class Estimators:
                     current_action_idx = current_action_idx.unsqueeze(1)
                 q_next = Q_target_updated.gather(1, next_action_idx)
                 Q_new += self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + (1-done)*self.gamma * q_next) + done*(r.unsqueeze(-1) + ad_reward.unsqueeze(-1))
-                Q_new = 0.5 * Q_new + 0.5 * critic_eval[i]
                 Q_target_updated.scatter_(dim=1, index=current_action_idx, src=Q_new)
                 Q_target[i] = Q_target_updated
             else:
@@ -60,7 +65,6 @@ class Estimators:
                 Q_new += self.alpha * (
                             (r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + (1 - done) * self.gamma * q_next) + done * (
                                      r.unsqueeze(-1) + ad_reward.unsqueeze(-1))
-                Q_new = 0.5 * Q_new + 0.5 * critic_eval[i]
                 Q_target_updated.scatter_(dim=1, index=current_action_idx, src=Q_new)
                 Q_target[i] = Q_target_updated*importance
                 Q_current[i] = Q_current[i]*importance

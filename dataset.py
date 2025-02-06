@@ -98,9 +98,9 @@ class DataSet:
         hair_color = torch.Tensor(list(map(float, f'{hair_type:03b}'))).to(self.device)
         skin_color = torch.Tensor(list(map(float, f'{skin_type:03b}'))).to(self.device)
         body_part = torch.Tensor(list(map(float, f'{body_type:03b}'))).to(self.device)
-        rl_input = torch.cat((hair_color, skin_color, body_part)).to(self.device)
+        patient_data = torch.cat((hair_color, skin_color, body_part)).to(self.device)
         # print(rl_input)
-        return rl_input
+        return patient_data
 
     def decode_input(self, rl_input):
         hair_type = int(str(int(rl_input[0])) + str(int(rl_input[1])) + str(int(rl_input[2])), 2)

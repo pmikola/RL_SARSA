@@ -24,8 +24,8 @@ num_m_bits = 10
 no_of_states = 14  # + num_e_bits + num_m_bits
 alpha = 1.
 epsilon = 1e-2
-gamma = 0.5
-tau = 0.005
+gamma = 0.9
+tau = 0.01
 no_of_games = 50
 no_of_rounds = 9
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -36,9 +36,10 @@ torch.manual_seed(2023)
 random.seed(2023)
 np.random.seed(2023)
 actor = NeuralNetwork_S(no_of_actions, no_of_states, device)
-target = NeuralNetwork_S(no_of_actions, no_of_states, device)
+target = NeuralNetwork_SA(no_of_actions, no_of_states, device)
 critic = NeuralNetwork_SA(no_of_actions, no_of_states, device)
 critic.task_indicator = actor.task_indicator
+target.task_indicator = actor.task_indicator
 actor.to(device)
 target.to(device)
 critic.to(device)
@@ -50,7 +51,6 @@ agent.BATCH_SIZE = 128
 game = Game(valueFunc, agent, device, no_of_rounds)
 game.game_cycles = 100
 game.games = no_of_games
-game.agent.exp_over = 0#int((game.game_cycles - 3) / 2)
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
 r_data = []
 a1_data = []
@@ -108,6 +108,7 @@ for i in range(1, game.game_cycles + 1):
     c_map_data.append(cmap(i))
     loss.append(losses)
 
+torch.save(agent.actor,'model.pt')
 print("Total time : ", total_time / 60, "[min]")
 
 ax.hist(r_data, alpha=0.65, stacked=False, histtype='bar', label=l_data, color=c_map_data)

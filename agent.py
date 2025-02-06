@@ -4,6 +4,7 @@ from collections import deque
 
 import numpy as np
 import torch
+from kiwisolver import strength
 from torch import nn
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import torch.nn.functional as F
@@ -19,7 +20,7 @@ class Agent:
         self.eps = (1e-3 + 0.95 * np.exp(-1e-2 * self.total_counter))
         self.counter = 0
         self.counter_coef = 0
-        self.exp_over = 10
+        self.exp_over = 20
         self.actor = actor
         self.target = target
         self.critic = critic
@@ -193,7 +194,7 @@ class Agent:
             p = torch.max(priority)
             updated_experience = (*experience[:-1], p)
             self.memory[i] = updated_experience
-        self.vF.soft_update(self.actor, self.target)
+        self.vF.soft_update(self.critic, self.target)
 
         ###### COMPUTATIONAL GRAPH GENERATION ######
         # dot = make_dot(prediction, params=dict(self.net.named_parameters()))
@@ -250,11 +251,12 @@ class Agent:
         else:
             done = torch.tensor([0.]).to(self.device)
             game_over = False
+
         s = torch.cat((patient, turn, done), dim=0)
-        s = torch.cat((s, s), dim=0)
-        s +=s*torch.rand_like(s)*self.eps*(1e-2/self.vF.epsilon)
+        input_state = torch.cat((s, s), dim=0)
+        input_state +=input_state*torch.rand_like(input_state)*self.eps*(1e-2/self.vF.epsilon)
         # print(s)
-        return s, done, game_over
+        return input_state, done, game_over
 
     def soft_argmax1d(self, input, beta=100):
         *_, n = input.shape
@@ -343,20 +345,20 @@ class Agent:
         ref_value_max_s2 = ref_value_s2 + ref_value_s2 * std / 100
         ref_value_min_s3 = ref_value_s3 - ref_value_s3 * std / 100
         ref_value_max_s3 = ref_value_s3 + ref_value_s3 * std / 100
-        r = 0.1
-        no_steps =100
+        no_steps = 10
+        strength_coeff_r = 1.
+        strength_coeff_p = 1.
         additional_reward = 0.
-        reward_table_0 = torch.linspace(0, 1, no_steps//2).to(self.device)
-        reward_table_1 = torch.linspace(1, 0, no_steps//2).to(self.device)
-        reward_table_0 = (torch.exp(reward_table_0 * 4) - 1) / (torch.exp(torch.tensor(4.0).to(self.device)) - 1)
-        reward_table_1 = (torch.exp(reward_table_1 * 4) - 1) / (torch.exp(torch.tensor(4.0).to(self.device)) - 1)
+        reward_table_0 = torch.linspace(0.1, 1, no_steps//2).to(self.device)
+        reward_table_1 = torch.linspace(1, 0.1, no_steps//2).to(self.device)
+        reward_table_0 = (torch.exp(reward_table_0 * strength_coeff_r) - 1) / (torch.exp(torch.tensor(strength_coeff_r).to(self.device)) - 1)
+        reward_table_1 = (torch.exp(reward_table_1 * strength_coeff_r) - 1) / (torch.exp(torch.tensor(strength_coeff_r).to(self.device)) - 1)
         reward_table = torch.cat([reward_table_0, reward_table_1],dim=0)
-        punishment_table_0 = torch.linspace(1, 0, no_steps // 2).to(self.device)
-        punishment_table_1 = torch.linspace(0, 1, no_steps // 2).to(self.device)
-        punishment_table_0 = (torch.exp(punishment_table_0 * 4) - 1) / (torch.exp(torch.tensor(4.0).to(self.device)) - 1)
-        punishment_table_1 = (torch.exp(punishment_table_1 * 4) - 1) / (torch.exp(torch.tensor(4.0).to(self.device)) - 1)
+        punishment_table_0 = torch.linspace(0.9, 0.1, no_steps // 2).to(self.device)
+        punishment_table_1 = torch.linspace(0.1, 0.9, no_steps // 2).to(self.device)
+        punishment_table_0 = (torch.exp(punishment_table_0 * strength_coeff_p) - 1) / (torch.exp(torch.tensor(strength_coeff_p).to(self.device)) - 1)
+        punishment_table_1 = (torch.exp(punishment_table_1 * strength_coeff_p) - 1) / (torch.exp(torch.tensor(strength_coeff_p).to(self.device)) - 1)
         punishment_table = torch.cat([punishment_table_0, punishment_table_1], dim=0)
-
         if game.cycle > self.exp_over:
             # MAIN TASK -> TRAINING
             if step_counter == 0:
@@ -450,13 +452,13 @@ class Agent:
                 p_idx = torch.argmin(distance_vals)
                 additional_reward -= punishment_table[p_idx].item()
 
-        if step_counter == 8 and reward*0.3 >= 5:
+        if step_counter == 8 and reward >= 5:
             additional_reward = 1.
-        if step_counter == 8 and reward*0.3 >= 6:
+        if step_counter == 8 and reward >= 6:
             additional_reward = 2.5
-        if step_counter == 8 and reward*0.3 >= 7:
+        if step_counter == 8 and reward >= 7:
             additional_reward = 5.
-        if step_counter == 8 and reward*0.3 >= 8:
+        if step_counter == 8 and reward >= 8:
             additional_reward = 10.
         if step_counter == 8 and reward*0.3 >= 9:
             print("maximum reward!")
