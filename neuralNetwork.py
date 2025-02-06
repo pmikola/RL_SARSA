@@ -57,7 +57,7 @@ class NeuralNetwork_S(nn.Module):
         self.task_indicator = nn.Parameter(task_indicator_vectors,requires_grad=True)
         self.limits = nn.Parameter(torch.tensor([0.,30.,0.,15.,0.,20.]),requires_grad=False)
 
-    def forward(self, state, t_id,raw_output=True):
+    def forward(self, state, t_id,raw_output=False):
         if isinstance(t_id, int):
             t_id = torch.tensor([t_id]).to(self.device)
         t_id = t_id.long() if isinstance(t_id, torch.Tensor) else torch.tensor(t_id, dtype=torch.long)
@@ -97,7 +97,6 @@ class NeuralNetwork_S(nn.Module):
         ls3 = torch.softmax(self.ls3(x3),dim=-1)
 
         if raw_output and not self.training:
-            print(t_id.shape)
             if t_id == 0:
                 idx=0
             elif t_id == 1:

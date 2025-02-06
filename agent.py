@@ -42,14 +42,20 @@ class Agent:
             self.device)
 
         # self.optimizer = torch.optim.SGD(self.net.parameters(), lr=0.001)
-        self.optimizer = torch.optim.Adam(
-            list(self.actor.parameters()) + list(self.critic.parameters()),
-            lr=1e-3,
-            betas=(0.9, 0.999),
-            eps=1e-08,
-            weight_decay=1e-6,
-            amsgrad=True
-        )
+        self.optimizer_critic = torch.optim.Adam(self.critic.parameters(),
+                                                 lr=1e-3,
+                                                 betas=(0.9, 0.999),
+                                                 eps=1e-08,
+                                                 weight_decay=1e-6,
+                                                 amsgrad=True
+                                                 )
+        self.optimizer_actor = torch.optim.Adam(self.actor.parameters(),
+                                          lr=1e-3,
+                                          betas=(0.9, 0.999),
+                                          eps=1e-08,
+                                          weight_decay=1e-6,
+                                          amsgrad=True
+                                          )
         self.Q_MAX = 0.
         self.lossMSE = nn.MSELoss().to(self.device)
         self.lossL1 = nn.L1Loss().to(self.device)
@@ -178,16 +184,30 @@ class Agent:
         target, prediction = self.vF.Q_value(self.actor,self.critic, self.target, s, a, r, s_next, a_next, done,tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
 
-        self.optimizer.zero_grad()
+        self.optimizer_critic.zero_grad()
         l = self.lossHuber(target[0], prediction[0])
         for i in range(1,3):
             l += self.lossHuber(target[i], prediction[i])
         l.backward()
-        self.optimizer.step()
+        self.optimizer_critic.step()
         abs_td_errors_ls1 = torch.abs(target[0] - prediction[0]).detach()+ 1e-8
         abs_td_errors_ls2 = torch.abs(target[1] - prediction[1]).detach()+ 1e-8
         abs_td_errors_ls3 = torch.abs(target[2] - prediction[2]).detach()+ 1e-8
         priorities = abs_td_errors_ls1+abs_td_errors_ls2+abs_td_errors_ls3
+
+        # Note : Prediction is Advantage
+        a = self.actor(s,tid)
+        log_probs = torch.log(a[0]+1e-8).squeeze(1)
+        log_probs_for_action = log_probs.gather(1, a[0].squeeze(1).long())
+        actor_loss = -(log_probs_for_action * prediction[0].detach()).mean()
+        for i in range(1, 3):
+            log_probs = torch.log(a[i]+1e-8).squeeze(1)
+            log_probs_for_action = log_probs.gather(1, a[i].squeeze(1).long())
+            actor_loss += -(log_probs_for_action * prediction[i].detach()).mean()
+
+        self.optimizer_actor.zero_grad()
+        actor_loss.backward()
+        self.optimizer_actor.step()
 
         for i, priority in enumerate(priorities):
             experience = self.memory[i]
@@ -195,6 +215,7 @@ class Agent:
             updated_experience = (*experience[:-1], p)
             self.memory[i] = updated_experience
         self.vF.soft_update(self.critic, self.target)
+
 
         ###### COMPUTATIONAL GRAPH GENERATION ######
         # dot = make_dot(prediction, params=dict(self.net.named_parameters()))
@@ -223,7 +244,7 @@ class Agent:
 
     def take_next_action(self, s_next,task_id, action, step_counter, dataset, game):
         _, _, body_part = dataset.decode_input(s_next)
-        actions, is_random_next = self.chooseNextAction(s_next,task_id, action, dataset, game)
+        actions, is_random_next = self.chooseNextAction(s_next,task_id, dataset, game)
         if is_random_next == 1:
             self.no_of_guesses += 1
             a1 = game.agent.value2action(actions[0], self.actor.no_of_actions, game.lower_limit, game.upper_limit)
@@ -290,7 +311,7 @@ class Agent:
             actions = self.actor(state, task_id)
         return actions, is_random
 
-    def chooseNextAction(self, state_next,task_id, action, dataset, game):
+    def chooseNextAction(self, state_next,task_id, dataset, game):
         is_random = 0
         explore_coef = self.vF.epsilon
         hair_type, skin_type, _ = dataset.decode_input(state_next)
@@ -321,7 +342,7 @@ class Agent:
         action_space = torch.arange(lower_limit, upper_limit, (upper_limit - lower_limit) / num_of_actions).to(self.device)
         idx = torch.argmin(torch.abs(action_space - action_value)).int()
         action_space = torch.zeros_like(action_space).to(self.device)
-        action_space[idx] = 10
+        action_space[idx] = 1.
         return action_space
 
     def checkReward(self, reward, action_value, state, dataset, step_counter, game, lower_limit, upper_limit, std):

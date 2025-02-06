@@ -108,7 +108,7 @@ for i in range(1, game.game_cycles + 1):
     c_map_data.append(cmap(i))
     loss.append(losses)
 
-torch.save(agent.actor,'model.pt')
+torch.save(agent.actor.state_dict(), 'model.pt')
 print("Total time : ", total_time / 60, "[min]")
 
 ax.hist(r_data, alpha=0.65, stacked=False, histtype='bar', label=l_data, color=c_map_data)

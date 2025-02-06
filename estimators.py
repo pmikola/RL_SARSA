@@ -62,8 +62,7 @@ class Estimators:
                     next_action_idx = next_action_idx.unsqueeze(1)
                     current_action_idx = current_action_idx.unsqueeze(1)
                 q_next = Q_target_updated.gather(1, next_action_idx)
-                Q_new += self.alpha * (
-                            (r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + (1 - done) * self.gamma * q_next) + done * (
+                Q_new += self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + (1 - done) * self.gamma * q_next) + done * (
                                      r.unsqueeze(-1) + ad_reward.unsqueeze(-1))
                 Q_target_updated.scatter_(dim=1, index=current_action_idx, src=Q_new)
                 Q_target[i] = Q_target_updated*importance
