@@ -36,16 +36,25 @@ torch.manual_seed(2023)
 random.seed(2023)
 np.random.seed(2023)
 actor = NeuralNetwork_S(no_of_actions, no_of_states, device)
-target = NeuralNetwork_SA(no_of_actions, no_of_states, device)
-critic = NeuralNetwork_SA(no_of_actions, no_of_states, device)
-critic.task_indicator = actor.task_indicator
-target.task_indicator = actor.task_indicator
+
+target_critic_1 = NeuralNetwork_SA(no_of_actions, no_of_states, device)
+target_critic_2 = NeuralNetwork_SA(no_of_actions, no_of_states, device)
+critic_1 = NeuralNetwork_SA(no_of_actions, no_of_states, device)
+critic_2 = NeuralNetwork_SA(no_of_actions, no_of_states, device)
+critic_1.task_indicator = actor.task_indicator
+critic_2.task_indicator = actor.task_indicator
+target_critic_1.task_indicator = actor.task_indicator
+target_critic_2.task_indicator = actor.task_indicator
+
 actor.to(device)
-target.to(device)
-critic.to(device)
+target_critic_1.to(device)
+target_critic_2.to(device)
+
+critic_1.to(device)
+critic_2.to(device)
 valueFunc = Estimators(alpha, epsilon, gamma, tau, device, no_of_actions, v_min=-no_of_games * no_of_rounds,
                        v_max=no_of_games * no_of_rounds)
-agent = Agent(actor, critic,target, valueFunc, no_of_states, num_e_bits, num_m_bits, device)
+agent = Agent(actor, critic_1, critic_2, target_critic_1,target_critic_2, valueFunc, no_of_states, num_e_bits, num_m_bits, device)
 agent.BATCH_SIZE = 128
 
 game = Game(valueFunc, agent, device, no_of_rounds)

@@ -15,15 +15,17 @@ from binary_converter import float2bit
 
 
 class Agent:
-    def __init__(self, actor,critic, target, valueFunction, no_of_states, num_e_bits, num_m_bits, device):
+    def __init__(self, actor, critic_1, critic_2, target_critic_1,target_critic_2, valueFunction, no_of_states, num_e_bits, num_m_bits, device):
         self.total_counter = 0.
         self.eps = (1e-3 + 0.95 * np.exp(-1e-2 * self.total_counter))
         self.counter = 0
         self.counter_coef = 0
         self.exp_over = 20
         self.actor = actor
-        self.target = target
-        self.critic = critic
+        self.target_critic_1 = target_critic_1
+        self.target_critic_2 = target_critic_2
+        self.critic_1 = critic_1
+        self.critic_2 = critic_2
         self.num_e_bits = num_e_bits
         self.num_m_bits = num_m_bits
         self.c = 0
@@ -42,13 +44,22 @@ class Agent:
             self.device)
 
         # self.optimizer = torch.optim.SGD(self.net.parameters(), lr=0.001)
-        self.optimizer_critic = torch.optim.Adam(self.critic.parameters(),
-                                                 lr=1e-3,
-                                                 betas=(0.9, 0.999),
-                                                 eps=1e-08,
-                                                 weight_decay=1e-6,
-                                                 amsgrad=True
-                                                 )
+        self.optimizer_critic_1 = torch.optim.Adam(self.critic_1.parameters(),
+                                                   lr=1e-3,
+                                                   betas=(0.9, 0.999),
+                                                   eps=1e-08,
+                                                   weight_decay=1e-6,
+                                                   amsgrad=True
+                                                   )
+
+        self.optimizer_critic_2 = torch.optim.Adam(self.critic_2.parameters(),
+                                                   lr=1e-3,
+                                                   betas=(0.9, 0.999),
+                                                   eps=1e-08,
+                                                   weight_decay=1e-6,
+                                                   amsgrad=True
+                                                   )
+
         self.optimizer_actor = torch.optim.Adam(self.actor.parameters(),
                                           lr=1e-3,
                                           betas=(0.9, 0.999),
@@ -181,29 +192,39 @@ class Agent:
             tid = torch.stack(list(torch.tensor([tid])), dim=0).clone().detach().to(self.device)
             done = torch.stack(list(done), dim=0).clone().detach().to(self.device)
 
-        target, advantage = self.vF.Q_value(self.actor, self.critic, self.target, s, a, r, s_next, a_next, done, tid, ad_reward)
+        Q_target, advantage_1,advantage_2 = self.vF.Q_value(self.critic_1, self.critic_2, self.target_critic_1, self.target_critic_2, s, a, r, s_next, a_next, done, tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
 
-        self.optimizer_critic.zero_grad()
-        l = self.lossHuber(target[0], advantage[0])
+        self.optimizer_critic_1.zero_grad()
+        l_1 = self.lossHuber(Q_target[0], advantage_1[0])
         for i in range(1,3):
-            l += self.lossHuber(target[i], advantage[i])
-        l.backward()
-        self.optimizer_critic.step()
-        abs_td_errors_ls1 = torch.abs(target[0] - advantage[0]).detach() + 1e-8
-        abs_td_errors_ls2 = torch.abs(target[1] - advantage[1]).detach() + 1e-8
-        abs_td_errors_ls3 = torch.abs(target[2] - advantage[2]).detach() + 1e-8
+            l_1 += self.lossHuber(Q_target[i], advantage_1[i])
+        l_1.backward()
+        self.optimizer_critic_1.step()
+        abs_td_errors_ls1 = torch.abs(Q_target[0] - advantage_1[0]).detach() + 1e-8
+        abs_td_errors_ls2 = torch.abs(Q_target[1] - advantage_1[1]).detach() + 1e-8
+        abs_td_errors_ls3 = torch.abs(Q_target[2] - advantage_1[2]).detach() + 1e-8
+
+        self.optimizer_critic_2.zero_grad()
+        l_2 = self.lossHuber(Q_target[0], advantage_2[0])
+        for i in range(1, 3):
+            l_2 += self.lossHuber(Q_target[i], advantage_2[i])
+        l_2.backward()
+        self.optimizer_critic_2.step()
+        abs_td_errors_ls1 += torch.abs(Q_target[0] - advantage_2[0]).detach() + 1e-8
+        abs_td_errors_ls2 += torch.abs(Q_target[1] - advantage_2[1]).detach() + 1e-8
+        abs_td_errors_ls3 += torch.abs(Q_target[2] - advantage_2[2]).detach() + 1e-8
+
         priorities = abs_td_errors_ls1+abs_td_errors_ls2+abs_td_errors_ls3
 
         # Note : Prediction is Advantage
-        a = self.actor(s,tid)
-        log_probs = torch.log(a[0]+1e-8).squeeze(1)
-        log_probs_for_action = log_probs.gather(1, a[0].squeeze(1).long())
-        actor_loss = -(log_probs_for_action * advantage[0].detach()).mean()
-        for i in range(1, 3):
-            log_probs = torch.log(a[i]+1e-8).squeeze(1)
-            log_probs_for_action = log_probs.gather(1, a[i].squeeze(1).long())
-            actor_loss += -(log_probs_for_action * advantage[i].detach()).mean()
+        a = self.actor(s, tid)
+        actor_loss = 0
+        for i in range(3):
+            log_probs = F.log_softmax(a[i], dim=-1).squeeze(1)
+            action_idx = a[i].argmax(dim=-1, keepdim=True)
+            log_probs_for_action = log_probs.gather(1, action_idx)
+            actor_loss += -(log_probs_for_action * torch.min(advantage_1[i].detach().mean(),advantage_2[i].detach().mean())).mean()
 
         self.optimizer_actor.zero_grad()
         actor_loss.backward()
@@ -214,13 +235,13 @@ class Agent:
             p = torch.max(priority)
             updated_experience = (*experience[:-1], p)
             self.memory[i] = updated_experience
-        self.vF.soft_update(self.critic, self.target)
-
+        self.vF.soft_update(self.critic_1, self.target_critic_1)
+        self.vF.soft_update(self.critic_2, self.target_critic_2)
 
         ###### COMPUTATIONAL GRAPH GENERATION ######
         # dot = make_dot(prediction, params=dict(self.net.named_parameters()))
         # dot.render(directory='doctest-output', view=True)
-        return l.item()
+        return l_1.item() + l_2.item()
 
     def take_action(self, s,task_id, step_counter, dataset, game):
         _, _, body_part = dataset.decode_input(s)
