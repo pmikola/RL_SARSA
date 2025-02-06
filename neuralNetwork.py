@@ -28,7 +28,7 @@ class NeuralNetwork_S(nn.Module):
         self.linear1 = nn.Linear(self.input, self.hidden_size, bias=True)
         self.linear2 = nn.Linear(self.hidden_size + self.input, self.hidden_size * 2, bias=True)
 
-        self.res_blocks = nn.Sequential(*[ResidualBlock(self.hidden_size * 2, dropout=0.1) for _ in range(5)])
+        self.res_blocks = nn.Sequential(*[ResidualBlock(self.hidden_size * 2, dropout=0.1) for _ in range(10)])
         self.linear4 = nn.Linear(self.hidden_size * 2 + self.input, self.hidden_size, bias=True)
 
         self.ls_01 = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
@@ -164,7 +164,7 @@ class NeuralNetwork_SA(nn.Module):
 
         self.linear1 = nn.Linear(self.input, self.input*2, bias=True)
         self.linear2 = nn.Linear(self.input*2, self.hidden_size*2, bias=True)
-        self.res_blocks = nn.Sequential(*[ResidualBlock(self.hidden_size * 2, dropout=0.1) for _ in range(5)])
+        self.res_blocks = nn.Sequential(*[ResidualBlock(self.hidden_size * 2, dropout=0.1) for _ in range(10)])
 
         self.linear3 = nn.Linear(self.hidden_size*2, self.hidden_size, bias=True)
         self.linear4_1 = nn.Linear(self.hidden_size, self.no_of_actions, bias=True)

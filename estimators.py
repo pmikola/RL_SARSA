@@ -24,8 +24,8 @@ class Estimators:
         #actor_actions = actor(s, task_indicator)
         a_p = []
         for i in range(0, 3):
-            a_p.append(a[i])
-        Q_current = critic(s, a_p, task_indicator)
+            a_p.append(a[i].detach())
+        Q_current = critic(s.detach(), a_p, task_indicator.detach())
         #print(target.__class__.__name__)
         with torch.no_grad():
             a_n =[]
