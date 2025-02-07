@@ -231,9 +231,9 @@ class Agent:
             log_probs_for_action = log_probs.gather(1, a[i].squeeze(1).long())
             id_critic = random.randint(0, 1)
             if id_critic == 0:
-                actor_loss += -(log_probs_for_action * Q_current_1[i].detach()).mean() # Note : reversed gradient descend for maximize actor probability of highest rewards
+                actor_loss += -(log_probs_for_action * Q_current_1[i].detach()).mean() # Note : reversed gradient descend for maximize actor probability of highest rewards (returns in the simple gradient method but Q value in the mixed scenario)
             else:
-                actor_loss += -(log_probs_for_action * Q_current_2[i].detach()).mean() # Note : reversed gradient descend for maximize actor probability of highest rewards
+                actor_loss += -(log_probs_for_action * Q_current_2[i].detach()).mean()
             entropy_bonus = -(a[i] * log_probs).sum(dim=-1).mean()
             actor_loss +=-0.01 * entropy_bonus
 
