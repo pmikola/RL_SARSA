@@ -227,7 +227,7 @@ class Agent:
 
         # Note : Policy gradient part
         for i in range(1, 3):
-            log_probs = torch.log(a[i] + 1e-8).squeeze(1)
+            log_probs = torch.log(a[i] + 1e-8).squeeze(1) # Note: Log is less computationaly efficient than log_softmax but better in the context of raw logits
             log_probs_for_action = log_probs.gather(1, a[i].squeeze(1).long())
             id_critic = random.randint(0, 1)
             if id_critic == 0:
