@@ -20,21 +20,38 @@ class Estimators:
         self.n_steps = n_steps
         self.counter = 0
 
-    def Q_value(self, critic_1, critic_2, target_critic_1,target_critic_2, s, a, r, s_next, a_next, done, task_indicator, ad_reward):
+    def Q_value(self,eps, critic_1, critic_2, target_critic_1,target_critic_2, s, a, r, s_next, a_next, done, task_indicator, ad_reward):
         #actor_actions = actor(s, task_indicator)
-        a_p = []
+        a_p_1 = []
+        a_p_2 = []
         for i in range(0, 3):
-            a_p.append(a[i].detach())
-        Q_current_1 = critic_1(s.detach(), a_p, task_indicator.detach())
-        Q_current_2 = critic_2(s.detach(), a_p, task_indicator.detach())
+            id_p = random.randint(0, 1)
+            a_noise = (torch.rand_like(a[i].detach()) * 2 - 1)*eps*(1e-2/self.epsilon)
+            if id_p == 0:
+                a_p_1.append(a[i].detach()+a[i].detach()*a_noise)
+                a_p_2.append(a[i].detach())
+            else:
+                a_p_1.append(a[i].detach())
+                a_p_2.append(a[i].detach() + a[i].detach() * a_noise)
+
+        Q_current_1 = critic_1(s.detach(), a_p_1, task_indicator.detach())
+        Q_current_2 = critic_2(s.detach(), a_p_2, task_indicator.detach())
 
         # print(target.__class__.__name__)
         with torch.no_grad():
-            a_n = []
+            a_n_1 = []
+            a_n_2 = []
             for i in range(0, 3):
-                a_n.append(a_next[i].detach())
-            Q_next_1 = target_critic_1(s_next.detach(), a_n, task_indicator.detach())
-            Q_next_2 = target_critic_2(s_next.detach(), a_n, task_indicator.detach())
+                id_n = random.randint(0, 1)
+                a_next_noise = (torch.rand_like(a_next[i].detach()) * 2 - 1)*eps*(1e-2/self.epsilon)
+                if id_n == 0:
+                    a_n_1.append(a_next[i].detach()+a_next[i].detach()*a_next_noise)
+                    a_n_2.append(a_next[i].detach())
+                else:
+                    a_n_1.append(a_next[i].detach())
+                    a_n_2.append(a_next[i].detach() + a_next[i].detach() * a_next_noise)
+            Q_next_1 = target_critic_1(s_next.detach(), a_n_1, task_indicator.detach())
+            Q_next_2 = target_critic_2(s_next.detach(), a_n_2, task_indicator.detach())
 
         Q_new = r.unsqueeze(-1) + ad_reward.unsqueeze(-1)
         z_t = torch.zeros_like(Q_next_1[0]).to(self.device)
@@ -47,8 +64,9 @@ class Estimators:
         self.counter += 1
         importance = 0.
         for i in range(0, 3):
+            id_next = random.randint(0, 1)
             if id != i:
-                Q_target_updated = Q_next_1[i].clone()
+                Q_target_updated = [Q_next_1[i].clone() ,Q_next_2[i].clone()][id_next]
                 current_action_idx = torch.argmax(a[i], dim=-1)
                 next_action_idx = torch.argmax(a_next[i], dim=-1)
                 if next_action_idx.dim() < 2:
@@ -61,7 +79,7 @@ class Estimators:
                 Q_target_updated.scatter_(dim=1, index=current_action_idx, src=Q_new)
                 Q_target[i] = Q_target_updated
             else:
-                Q_target_updated = Q_next_1[i].clone()
+                Q_target_updated = [Q_next_1[i].clone() ,Q_next_2[i].clone()][id_next]
                 current_action_idx = torch.argmax(a[i], dim=-1)
                 next_action_idx = torch.argmax(a_next[i], dim=-1)
                 if next_action_idx.dim() < 2:
@@ -74,6 +92,7 @@ class Estimators:
                 Q_target_updated.scatter_(dim=1, index=current_action_idx, src=Q_new)
                 Q_target[i] = Q_target_updated * importance
                 Q_current_1[i] = Q_current_1[i] * importance
+                Q_current_2[i] = Q_current_2[i] * importance
         return Q_target, Q_current_1,Q_current_2
 
     def soft_update(self, net, target_net):

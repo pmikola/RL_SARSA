@@ -192,7 +192,8 @@ class Agent:
             tid = torch.stack(list(torch.tensor([tid])), dim=0).clone().detach().to(self.device)
             done = torch.stack(list(done), dim=0).clone().detach().to(self.device)
 
-        Q_target, Q_current_1,Q_current_2 = self.vF.Q_value(self.critic_1, self.critic_2, self.target_critic_1, self.target_critic_2, s, a, r, s_next, a_next, done, tid, ad_reward)
+        # Note: Q learning part
+        Q_target, Q_current_1,Q_current_2 = self.vF.Q_value(self.eps,self.critic_1, self.critic_2, self.target_critic_1, self.target_critic_2, s, a, r, s_next, a_next, done, tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
 
         self.optimizer_critic_1.zero_grad()
@@ -203,16 +204,19 @@ class Agent:
         self.optimizer_critic_1.step()
 
 
-        # self.optimizer_critic_2.zero_grad()
-        # l_2 = self.lossHuber(Q_target[0], Q_current_2[0])
-        # for i in range(1, 3):
-        #     l_2 += self.lossHuber(Q_target[i], Q_current_2[i])
-        # l_2.backward()
-        # self.optimizer_critic_2.step()
+        self.optimizer_critic_2.zero_grad()
+        l_2 = self.lossHuber(Q_target[0], Q_current_2[0])
+        for i in range(1, 3):
+            l_2 += self.lossHuber(Q_target[i], Q_current_2[i])
+        l_2.backward()
+        self.optimizer_critic_2.step()
 
         abs_td_errors_ls1 = torch.abs(Q_target[0] - Q_current_1[0]).detach()+ 1e-8
         abs_td_errors_ls2 = torch.abs(Q_target[1] - Q_current_1[1]).detach()+ 1e-8
         abs_td_errors_ls3 = torch.abs(Q_target[2] - Q_current_1[2]).detach()+ 1e-8
+        abs_td_errors_ls1 += torch.abs(Q_target[0] - Q_current_2[0]).detach() + 1e-8
+        abs_td_errors_ls2 += torch.abs(Q_target[1] - Q_current_2[1]).detach() + 1e-8
+        abs_td_errors_ls3 += torch.abs(Q_target[2] - Q_current_2[2]).detach() + 1e-8
         td_errors = abs_td_errors_ls1+abs_td_errors_ls2+abs_td_errors_ls3
 
         # Note : Prediction is Advantage
@@ -220,12 +224,18 @@ class Agent:
         log_probs = torch.log(a[0] + 1e-8).squeeze(1)
         log_probs_for_action = log_probs.gather(1, a[0].squeeze(1).long())
         actor_loss = -(log_probs_for_action * Q_current_1[0].detach()).mean()
+
+        # Note : Policy gradient part
         for i in range(1, 3):
             log_probs = torch.log(a[i] + 1e-8).squeeze(1)
             log_probs_for_action = log_probs.gather(1, a[i].squeeze(1).long())
-            actor_loss += -(log_probs_for_action * Q_current_1[i].detach()).mean()
-            # entropy_bonus = -(a[i] * log_probs).sum(dim=-1).mean()
-            # actor_loss +=-0.01 * entropy_bonus
+            id_critic = random.randint(0, 1)
+            if id_critic == 0:
+                actor_loss += -(log_probs_for_action * Q_current_1[i].detach()).mean() # Note : reversed gradient descend for maximize actor probability of highest rewards
+            else:
+                actor_loss += -(log_probs_for_action * Q_current_2[i].detach()).mean() # Note : reversed gradient descend for maximize actor probability of highest rewards
+            entropy_bonus = -(a[i] * log_probs).sum(dim=-1).mean()
+            actor_loss +=-0.01 * entropy_bonus
 
         self.optimizer_actor.zero_grad()
         actor_loss.backward()
@@ -237,12 +247,12 @@ class Agent:
             updated_experience = (*experience[:-1], p)
             self.memory[i] = updated_experience
         self.vF.soft_update(self.critic_1, self.target_critic_1)
-        #self.vF.soft_update(self.critic_2, self.target_critic_2)
+        self.vF.soft_update(self.critic_2, self.target_critic_2)
 
         ###### COMPUTATIONAL GRAPH GENERATION ######
         # dot = make_dot(prediction, params=dict(self.net.named_parameters()))
         # dot.render(directory='doctest-output', view=True)
-        return l_1.item()
+        return l_1.item() + l_2.item()
 
     def take_action(self, s,task_id, step_counter, dataset, game):
         _, _, body_part = dataset.decode_input(s)
@@ -298,6 +308,7 @@ class Agent:
         s = torch.cat((patient, turn, done), dim=0)
         input_state = torch.cat((s, s), dim=0)
         input_state +=input_state*torch.rand_like(input_state)*self.eps*(1e-2/self.vF.epsilon)
+
         # print(s)
         return input_state, done, game_over
 
