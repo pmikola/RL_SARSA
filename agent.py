@@ -192,56 +192,57 @@ class Agent:
             tid = torch.stack(list(torch.tensor([tid])), dim=0).clone().detach().to(self.device)
             done = torch.stack(list(done), dim=0).clone().detach().to(self.device)
 
-        Q_target, advantage_1,advantage_2 = self.vF.Q_value(self.critic_1, self.critic_2, self.target_critic_1, self.target_critic_2, s, a, r, s_next, a_next, done, tid, ad_reward)
+        Q_target, Q_current_1,Q_current_2 = self.vF.Q_value(self.critic_1, self.critic_2, self.target_critic_1, self.target_critic_2, s, a, r, s_next, a_next, done, tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
 
         self.optimizer_critic_1.zero_grad()
-        l_1 = self.lossHuber(Q_target[0], advantage_1[0])
+        l_1 = self.lossHuber(Q_target[0], Q_current_1[0])
         for i in range(1,3):
-            l_1 += self.lossHuber(Q_target[i], advantage_1[i])
+            l_1 += self.lossHuber(Q_target[i], Q_current_1[i])
         l_1.backward()
         self.optimizer_critic_1.step()
-        abs_td_errors_ls1 = torch.abs(Q_target[0] - advantage_1[0]).detach() + 1e-8
-        abs_td_errors_ls2 = torch.abs(Q_target[1] - advantage_1[1]).detach() + 1e-8
-        abs_td_errors_ls3 = torch.abs(Q_target[2] - advantage_1[2]).detach() + 1e-8
 
-        self.optimizer_critic_2.zero_grad()
-        l_2 = self.lossHuber(Q_target[0], advantage_2[0])
-        for i in range(1, 3):
-            l_2 += self.lossHuber(Q_target[i], advantage_2[i])
-        l_2.backward()
-        self.optimizer_critic_2.step()
-        abs_td_errors_ls1 += torch.abs(Q_target[0] - advantage_2[0]).detach() + 1e-8
-        abs_td_errors_ls2 += torch.abs(Q_target[1] - advantage_2[1]).detach() + 1e-8
-        abs_td_errors_ls3 += torch.abs(Q_target[2] - advantage_2[2]).detach() + 1e-8
 
-        priorities = abs_td_errors_ls1+abs_td_errors_ls2+abs_td_errors_ls3
+        # self.optimizer_critic_2.zero_grad()
+        # l_2 = self.lossHuber(Q_target[0], Q_current_2[0])
+        # for i in range(1, 3):
+        #     l_2 += self.lossHuber(Q_target[i], Q_current_2[i])
+        # l_2.backward()
+        # self.optimizer_critic_2.step()
+
+        abs_td_errors_ls1 = torch.abs(Q_target[0] - Q_current_1[0]).detach()+ 1e-8
+        abs_td_errors_ls2 = torch.abs(Q_target[1] - Q_current_1[1]).detach()+ 1e-8
+        abs_td_errors_ls3 = torch.abs(Q_target[2] - Q_current_1[2]).detach()+ 1e-8
+        td_errors = abs_td_errors_ls1+abs_td_errors_ls2+abs_td_errors_ls3
 
         # Note : Prediction is Advantage
         a = self.actor(s, tid)
-        actor_loss = 0
-        for i in range(3):
-            log_probs = F.log_softmax(a[i], dim=-1).squeeze(1)
-            action_idx = a[i].argmax(dim=-1, keepdim=True)
-            log_probs_for_action = log_probs.gather(1, action_idx)
-            actor_loss += -(log_probs_for_action * torch.min(advantage_1[i].detach().mean(),advantage_2[i].detach().mean())).mean()
+        log_probs = torch.log(a[0] + 1e-8).squeeze(1)
+        log_probs_for_action = log_probs.gather(1, a[0].squeeze(1).long())
+        actor_loss = -(log_probs_for_action * Q_current_1[0].detach()).mean()
+        for i in range(1, 3):
+            log_probs = torch.log(a[i] + 1e-8).squeeze(1)
+            log_probs_for_action = log_probs.gather(1, a[i].squeeze(1).long())
+            actor_loss += -(log_probs_for_action * Q_current_1[i].detach()).mean()
+            # entropy_bonus = -(a[i] * log_probs).sum(dim=-1).mean()
+            # actor_loss +=-0.01 * entropy_bonus
 
         self.optimizer_actor.zero_grad()
         actor_loss.backward()
         self.optimizer_actor.step()
 
-        for i, priority in enumerate(priorities):
+        for i, priority in enumerate(td_errors):
             experience = self.memory[i]
             p = torch.max(priority)
             updated_experience = (*experience[:-1], p)
             self.memory[i] = updated_experience
         self.vF.soft_update(self.critic_1, self.target_critic_1)
-        self.vF.soft_update(self.critic_2, self.target_critic_2)
+        #self.vF.soft_update(self.critic_2, self.target_critic_2)
 
         ###### COMPUTATIONAL GRAPH GENERATION ######
         # dot = make_dot(prediction, params=dict(self.net.named_parameters()))
         # dot.render(directory='doctest-output', view=True)
-        return l_1.item() + l_2.item()
+        return l_1.item()
 
     def take_action(self, s,task_id, step_counter, dataset, game):
         _, _, body_part = dataset.decode_input(s)

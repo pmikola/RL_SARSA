@@ -92,9 +92,9 @@ class NeuralNetwork_S(nn.Module):
         x3 = self.LNorm_ls03(x3)
         x3 = self.act(self.ls_13(x3))
 
-        ls1 = self.ls1(x1)
-        ls2 = self.ls2(x2)
-        ls3 = self.ls3(x3)
+        ls1 = torch.softmax(self.ls1(x1),dim=-1)
+        ls2 = torch.softmax(self.ls2(x2),dim=-1)
+        ls3 = torch.softmax(self.ls3(x3),dim=-1)
 
         if raw_output and not self.training:
             if t_id == 0:
