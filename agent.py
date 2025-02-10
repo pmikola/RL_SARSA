@@ -35,7 +35,7 @@ class Agent:
         self.sign = torch.tensor([1.]).to(device)
         self.no_of_guesses = 0.
         self.BATCH_SIZE = 64
-        self.MAX_MEMORY = 20000
+        self.MAX_MEMORY = 10000
         self.MAX_PRIORITY = torch.tensor(1.).to(device)
         self.vF = valueFunction
         self.memory = deque(maxlen=self.MAX_MEMORY)  # popleft()
@@ -203,7 +203,6 @@ class Agent:
         l_1.backward()
         self.optimizer_critic_1.step()
 
-
         self.optimizer_critic_2.zero_grad()
         l_2 = self.lossHuber(Q_target[0], Q_current_2[0])
         for i in range(1, 3):
@@ -211,29 +210,23 @@ class Agent:
         l_2.backward()
         self.optimizer_critic_2.step()
 
-        abs_td_errors_ls1 = torch.abs(Q_target[0] - Q_current_1[0]).detach()+ 1e-8
-        abs_td_errors_ls2 = torch.abs(Q_target[1] - Q_current_1[1]).detach()+ 1e-8
-        abs_td_errors_ls3 = torch.abs(Q_target[2] - Q_current_1[2]).detach()+ 1e-8
-        abs_td_errors_ls1 += torch.abs(Q_target[0] - Q_current_2[0]).detach() + 1e-8
-        abs_td_errors_ls2 += torch.abs(Q_target[1] - Q_current_2[1]).detach() + 1e-8
-        abs_td_errors_ls3 += torch.abs(Q_target[2] - Q_current_2[2]).detach() + 1e-8
-        td_errors = abs_td_errors_ls1+abs_td_errors_ls2+abs_td_errors_ls3
+        td_errors = sum(torch.abs(Q_target[i] - Q_current_1[i]).detach() + torch.abs(Q_target[i] - Q_current_2[i]).detach() + (1e-8 if i == 2 else 0) for i in range(3))
 
         # Note : Prediction is Advantage
         a = self.actor(s, tid)
-        log_probs = torch.log(a[0] + 1e-8).squeeze(1)
-        log_probs_for_action = log_probs.gather(1, a[0].squeeze(1).long())
-        actor_loss = -(log_probs_for_action * Q_current_1[0].detach()).mean()
-
+        actor_loss = 0.
         # Note : Policy gradient part
-        for i in range(1, 3):
+        for i in range(0, 3):
+            idx = random.randint(0,1)
+            if idx == 0:
+                q_ratio_1 = 1/random.randint(2,10)
+                q_ratio_2 = 1. - q_ratio_1
+            else:
+                q_ratio_2 = 1 / random.randint(2, 10)
+                q_ratio_1 = 1. - q_ratio_2
             log_probs = torch.log(a[i] + 1e-8).squeeze(1) # Note: Log is less computationaly efficient than log_softmax but better in the context of raw logits
             log_probs_for_action = log_probs.gather(1, a[i].squeeze(1).long())
-            id_critic = random.randint(0, 1)
-            if id_critic == 0:
-                actor_loss += -(log_probs_for_action * Q_current_1[i].detach()).mean() # Note : reversed gradient descend for maximize actor probability of highest rewards (returns in the simple gradient method but Q value in the mixed scenario)
-            else:
-                actor_loss += -(log_probs_for_action * Q_current_2[i].detach()).mean()
+            actor_loss += -(log_probs_for_action * (q_ratio_1*Q_current_1[i].detach()+q_ratio_2*Q_current_2[i].detach())).mean() # Note : reversed gradient descend for maximize actor probability of highest rewards (returns in the simple gradient method but Q value in the mixed scenario)
             entropy_bonus = -(a[i] * log_probs).sum(dim=-1).mean()
             actor_loss +=-0.01 * entropy_bonus
 
@@ -399,7 +392,7 @@ class Agent:
         ref_value_max_s2 = ref_value_s2 + ref_value_s2 * std / 100
         ref_value_min_s3 = ref_value_s3 - ref_value_s3 * std / 100
         ref_value_max_s3 = ref_value_s3 + ref_value_s3 * std / 100
-        no_steps = 100
+        no_steps = 256
         strength_coeff_r = 1.
         strength_coeff_p = 1.
         additional_reward = 0.
@@ -468,17 +461,15 @@ class Agent:
                 p_idx = torch.argmin(distance_vals)
                 additional_reward -= punishment_table[p_idx].item()
 
-
-        if step_counter == 8 and reward >= 5:
+        if step_counter == 8 and reward*0.34 >= 5:
             additional_reward = 1.
-        if step_counter == 8 and reward >= 6:
+        if step_counter == 8 and reward*0.34 >= 6:
             additional_reward = 2.5
-        if step_counter == 8 and reward >= 7:
+        if step_counter == 8 and reward*0.34 >= 7:
             additional_reward = 5.
-        if step_counter == 8 and reward >= 8:
+        if step_counter == 8 and reward*0.34 >= 8:
             additional_reward = 10.
-        if step_counter == 8 and reward*0.3 >= 9:
-            print("maximum reward!")
+        if step_counter == 8 and reward*0.34 >= 9:
             additional_reward = 25.
         return reward, additional_reward
 

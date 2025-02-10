@@ -55,7 +55,7 @@ class NeuralNetwork_S(nn.Module):
         self.apply(self._init_weights)
         task_indicator_vectors = self.generate_orthogonal_vectors(3, 32)
         self.task_indicator = nn.Parameter(task_indicator_vectors,requires_grad=True)
-        self.limits = nn.Parameter(torch.tensor([0.,30.,0.,15.,0.,20.]),requires_grad=False)
+        self.limits = nn.Parameter(torch.tensor([0.,30.,0.,15.,0.,28.]),requires_grad=False)
 
     def forward(self, state, t_id,raw_output=False):
         if isinstance(t_id, int):
