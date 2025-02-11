@@ -68,9 +68,7 @@ class Game:
                 self.agent.total_counter = self.total_counter
                 self.s, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
                 self.a, self.a_value, _ = self.agent.take_action(self.s,self.task_id, step_counter, dataset,game)
-                self.reward,self.ad_reward ,head_rewards= self.agent.checkReward(head_rewards,self.reward, self.a_value, self.s, self.dataset, step_counter,
-                                                     game, self.lower_limit, self.upper_limit,
-                                                     self.std)
+                self.reward,self.ad_reward ,head_rewards= self.agent.checkReward(head_rewards,self.reward, self.a_value, self.s, self.dataset, step_counter,game, self.lower_limit, self.upper_limit,self.std)
                 self.s_next, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
                 self.a_next, a_val_next, _ = self.agent.take_next_action(self.s_next,self.task_id, self.a, step_counter, dataset,game)
                 l = self.agent.train_short_memory(self.s, self.a[0],self.a[1],self.a[2], self.reward, self.s_next,self.a_next[0],self.a_next[1],self.a_next[2], self.done,self.task_id,self.ad_reward)

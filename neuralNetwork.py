@@ -17,13 +17,13 @@ class NeuralNetwork_S(nn.Module):
         super(NeuralNetwork_S, self).__init__()
         self.no_of_actions = no_of_actions
         self.no_of_states = no_of_states
-        self.hidden_size = 512
+        self.hidden_size = 128
         self.device = device
         self.modulation_resolution = 10
         self.modulation_scale = 2
         self.input = self.no_of_states * 2
         self.hidden_state = self.input + self.hidden_size
-        self.act = nn.ELU(2)
+        self.act = nn.LeakyReLU(0.1)
 
         self.linear1 = nn.Linear(self.input, self.hidden_size, bias=True)
         self.linear2 = nn.Linear(self.hidden_size + self.input, self.hidden_size * 2, bias=True)
@@ -153,14 +153,13 @@ class NeuralNetwork_SA(nn.Module):
         self.task_indicator = None
         self.no_of_actions = no_of_actions
         self.no_of_states = no_of_states
-        self.hidden_size = 512
+        self.hidden_size = 128
         self.modulation_resolution = 10
         self.modulation_scale = 2
         self.device = device
         self.input = self.no_of_states * 2 + 32 + self.no_of_actions*3
         self.hidden_state_action = self.input + self.hidden_size
-
-        self.act = nn.ELU(2)
+        self.act = nn.LeakyReLU(0.1)#nn.ELU(2)
 
         self.linear1 = nn.Linear(self.input, self.input*2, bias=True)
         self.linear2 = nn.Linear(self.input*2, self.hidden_size*2, bias=True)

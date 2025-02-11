@@ -325,7 +325,9 @@ class Agent:
         is_random = 0
         explore_coef = self.vF.epsilon
         hair_type, skin_type, _ = dataset.decode_input(state)
-        self.eps = (1e-6 + 0.99 * np.exp(-1e-2 * self.total_counter))
+        self.eps = (1e-6 + 0.999 * np.exp(-1.1e-2 * self.total_counter))
+        if game.cycle > game.game_cycles * 0.95:
+            self.eps = 0.
         if   np.random.uniform(0,self.eps) > explore_coef:
             a1 = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
             a2 = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
@@ -341,7 +343,9 @@ class Agent:
         is_random = 0
         explore_coef = self.vF.epsilon
         hair_type, skin_type, _ = dataset.decode_input(state_next)
-        self.eps = (1e-6 + 0.99 * np.exp(-1e-2 * self.total_counter))
+        self.eps = (1e-6 + 0.999 * np.exp(-1.1e-2 * self.total_counter))
+        if game.cycle > game.game_cycles * 0.95:
+            self.eps = 0.
         if  np.random.uniform(0,self.eps) > explore_coef:
             act = np.random.uniform(-1., 1.)
             mean = (game.lower_limit + game.upper_limit) / 2
