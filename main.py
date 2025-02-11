@@ -58,7 +58,7 @@ agent = Agent(actor, critic_1, critic_2, target_critic_1,target_critic_2, valueF
 agent.BATCH_SIZE = 128
 
 game = Game(valueFunc, agent, device, no_of_rounds)
-game.game_cycles = 100
+game.game_cycles = 50
 game.games = no_of_games
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
 r_data = []
@@ -69,6 +69,9 @@ a3_data = []
 l_data = []
 loss = []
 c_map_data = []
+h0_rewards = []
+h1_rewards = []
+h2_rewards = []
 total_time = 0.
 ax = plt.figure().gca()
 r = [0,0,0]
@@ -76,7 +79,7 @@ for i in range(1, game.game_cycles + 1):
     game.cycle = i
     start = time.time()
     print("GAME CYCLE : ", i)
-    rewards, a_val, losses = game.playntrain(game, dataset, games=no_of_games)
+    rewards, a_val, losses,head_rewards = game.playntrain(game, dataset, games=no_of_games)
     R = sum(rewards)
     print("  REWARDS TOTAL : ",R, " ||  RANDOM GUESSES: ",
           game.agent.no_of_guesses)
@@ -108,6 +111,9 @@ for i in range(1, game.game_cycles + 1):
         game.total_counter = 1e10
         game.task_id = 2
 
+    h0_rewards.append(head_rewards[0])
+    h1_rewards.append(head_rewards[1])
+    h2_rewards.append(head_rewards[2])
     r_data.append(rewards)
     a1_data.append(a_val[0])
     a2_data.append(a_val[1])
@@ -153,6 +159,18 @@ plt.ylabel("Rewards")
 plt.grid()
 plt.show()
 
+
+h = plt.figure().gca()
+h.plot(h0_rewards,color='r',label='h0')
+h.plot(h1_rewards,color='g',label='h1')
+h.plot(h2_rewards,color='b',label='h2')
+
+plt.xlabel("No. Games")
+plt.ylabel("rewards")
+plt.legend()
+plt.grid()
+plt.show()
+
 b = plt.figure().gca()
 loss_total = np.array(sum(loss, [])) / no_of_rounds
 b.plot(loss_total)
@@ -161,3 +179,5 @@ plt.xlabel("No. Games")
 plt.ylabel("loss")
 plt.grid()
 plt.show()
+
+

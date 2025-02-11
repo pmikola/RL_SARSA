@@ -219,10 +219,10 @@ class Agent:
         for i in range(0, 3):
             idx = random.randint(0,1)
             if idx == 0:
-                q_ratio_1 = 1/random.randint(2,10)
+                q_ratio_1 = 1/random.randint(2,20)
                 q_ratio_2 = 1. - q_ratio_1
             else:
-                q_ratio_2 = 1 / random.randint(2, 10)
+                q_ratio_2 = 1 / random.randint(2, 20)
                 q_ratio_1 = 1. - q_ratio_2
             log_probs = torch.log(a[i] + 1e-8).squeeze(1) # Note: Log is less computationaly efficient than log_softmax but better in the context of raw logits
             log_probs_for_action = log_probs.gather(1, a[i].squeeze(1).long())
@@ -371,8 +371,9 @@ class Agent:
         action_space[idx] = 1.
         return action_space
 
-    def checkReward(self, reward, action_value, state, dataset, step_counter, game, lower_limit, upper_limit, std):
+    def checkReward(self, head_rewards,reward, action_value, state, dataset, step_counter, game, lower_limit, upper_limit, std):
         hair_type, skin_type, body_part = dataset.decode_input(state)
+        r_h0,r_h1,r_h2 = head_rewards
         if game.task_id == 0:
             ref_value_s1 = torch.sum(dataset.kj_total[0][step_counter][body_part]) / 2
             ref_value_s2 = torch.sum(dataset.kj_total[1][step_counter][body_part]) / 2
@@ -415,20 +416,26 @@ class Agent:
                 additional_reward -= -1
             else:
                 reward += 1.
+                r_h0 +=1
             if action_value[1] >= 1.:
                 additional_reward -= -1
             else:
                 reward += 1.
+                r_h1 +=1
+
             if action_value[2] >= 1.:
                 additional_reward -= -1
             else:
                 reward += 1.
+                r_h2 +=1
+
         else:
             if ref_value_min_s1 < action_value[0] < ref_value_max_s1:
                 distance_vals = torch.linspace(ref_value_min_s1,ref_value_max_s1, no_steps)
                 distance_vals = torch.abs(distance_vals/action_value[0] - 1)
                 r_idx = torch.argmin(distance_vals)
                 reward += reward_table[r_idx].item()
+                r_h0 += 1
             else:
                 distance_vals_min = torch.linspace(game.lower_limit, ref_value_min_s1, no_steps // 2)
                 distance_vals_max = torch.linspace(ref_value_max_s1, game.upper_limit, no_steps // 2)
@@ -441,6 +448,7 @@ class Agent:
                 distance_vals = torch.abs(distance_vals / action_value[1] - 1)
                 r_idx = torch.argmin(distance_vals)
                 reward += reward_table[r_idx].item()
+                r_h1 += 1
             else:
                 distance_vals_min = torch.linspace(game.lower_limit, ref_value_min_s2, no_steps // 2)
                 distance_vals_max = torch.linspace(ref_value_max_s2, game.upper_limit, no_steps // 2)
@@ -453,6 +461,7 @@ class Agent:
                 distance_vals = torch.abs(distance_vals / action_value[2] - 1)
                 r_idx = torch.argmin(distance_vals)
                 reward += reward_table[r_idx].item()
+                r_h2 += 1
             else:
                 distance_vals_min = torch.linspace(game.lower_limit, ref_value_min_s3, no_steps // 2)
                 distance_vals_max = torch.linspace(ref_value_max_s3, game.upper_limit, no_steps // 2)
@@ -471,7 +480,7 @@ class Agent:
             additional_reward = 10.
         if step_counter == 8 and reward*0.34 >= 9:
             additional_reward = 25.
-        return reward, additional_reward
+        return reward, additional_reward,[r_h0,r_h1,r_h2]
 
     def int2binary(self, step_counter):
         bin = list(map(float, f'{step_counter:04b}'))

@@ -53,7 +53,7 @@ class Estimators:
             Q_next_1 = target_critic_1(s_next.detach(), a_n_1, task_indicator.detach())
             Q_next_2 = target_critic_2(s_next.detach(), a_n_2, task_indicator.detach())
 
-        Q_new = torch.zeros_like(r.unsqueeze(-1)).to(self.device)# + ad_reward.unsqueeze(-1)
+        Q_new = torch.zeros_like(r.unsqueeze(-1)).to(self.device)
         z_t = torch.zeros_like(Q_next_1[0]).to(self.device)
         # print(z_t.shape)
         Q_target = [z_t, z_t, z_t]
@@ -62,8 +62,8 @@ class Estimators:
         else:
             id = random.randint(0, 2)
         self.counter += 1
-        importance = 0.
         for i in range(0, 3):
+            importance = random.uniform(0.,1.1)
             id_next = random.randint(0, 1)
             if id != i:
                 Q_target_updated = [Q_next_1[i].clone(),Q_next_2[i].clone()][id_next]
@@ -73,7 +73,7 @@ class Estimators:
                     next_action_idx = next_action_idx.unsqueeze(1)
                     current_action_idx = current_action_idx.unsqueeze(1)
                 q_next = Q_target_updated.gather(1, next_action_idx)
-                Q_new += self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + (1 - done) * self.gamma * q_next) + done * (r.unsqueeze(-1) + ad_reward.unsqueeze(-1))
+                Q_new += self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + (1 - done) * self.gamma * q_next) #+ done * (r.unsqueeze(-1) + ad_reward.unsqueeze(-1))
                 Q_target_updated.scatter_(dim=1, index=current_action_idx, src=Q_new)
                 Q_target[i] = Q_target_updated
             else:
@@ -84,8 +84,7 @@ class Estimators:
                     next_action_idx = next_action_idx.unsqueeze(1)
                     current_action_idx = current_action_idx.unsqueeze(1)
                 q_next = Q_target_updated.gather(1, next_action_idx)
-                Q_new += self.alpha * (
-                            (r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + (1 - done) * self.gamma * q_next) + done * (r.unsqueeze(-1) + ad_reward.unsqueeze(-1))
+                Q_new += self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + (1 - done) * self.gamma * q_next) + done * (r.unsqueeze(-1) + ad_reward.unsqueeze(-1))
                 Q_target_updated.scatter_(dim=1, index=current_action_idx, src=Q_new)
                 Q_target[i] = Q_target_updated * importance
                 Q_current_1[i] = Q_current_1[i] * importance

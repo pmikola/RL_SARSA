@@ -62,13 +62,13 @@ class Game:
             self.upper_limit = self.upper_limit_j
             print("  SETTING UP FLUENCE | Task id: ", self.task_id)
         step_counter = 0
-
+        head_rewards = [0.,0.,0.]
         for k in range(games):
             while True:
                 self.agent.total_counter = self.total_counter
                 self.s, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
                 self.a, self.a_value, _ = self.agent.take_action(self.s,self.task_id, step_counter, dataset,game)
-                self.reward,self.ad_reward = self.agent.checkReward(self.reward, self.a_value, self.s, self.dataset, step_counter,
+                self.reward,self.ad_reward ,head_rewards= self.agent.checkReward(head_rewards,self.reward, self.a_value, self.s, self.dataset, step_counter,
                                                      game, self.lower_limit, self.upper_limit,
                                                      self.std)
                 self.s_next, self.done, self.game_over = self.agent.get_state(step_counter, dataset)
@@ -87,4 +87,4 @@ class Game:
                     a_val.append(self.a_value)
                     self.reward = 0.
                     break
-        return rewards, a_val,losses
+        return rewards, a_val,losses,head_rewards
