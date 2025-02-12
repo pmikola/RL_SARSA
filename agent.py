@@ -15,13 +15,14 @@ from binary_converter import float2bit
 
 
 class Agent:
-    def __init__(self, actor, critic_1, critic_2, target_critic_1,target_critic_2, valueFunction, no_of_states, num_e_bits, num_m_bits, device):
+    def __init__(self, actor,target_actor, critic_1, critic_2, target_critic_1,target_critic_2, valueFunction, no_of_states, num_e_bits, num_m_bits, device):
         self.total_counter = 0.
         self.eps = (1e-3 + 0.95 * np.exp(-1e-2 * self.total_counter))
         self.counter = 0
         self.counter_coef = 0
         self.exp_over = 20
         self.actor = actor
+        self.target_actor = target_actor
         self.target_critic_1 = target_critic_1
         self.target_critic_2 = target_critic_2
         self.critic_1 = critic_1
@@ -60,13 +61,22 @@ class Agent:
                                                    amsgrad=True
                                                    )
 
-        self.optimizer_actor = torch.optim.Adam(self.actor.parameters(),
-                                          lr=1e-3,
-                                          betas=(0.9, 0.999),
-                                          eps=1e-08,
-                                          weight_decay=1e-6,
-                                          amsgrad=True
-                                          )
+        self.optimizer_actor_Q_value = torch.optim.Adam(self.actor.parameters(),
+                                                       lr=1e-3,
+                                                       betas=(0.9, 0.999),
+                                                       eps=1e-08,
+                                                       weight_decay=1e-6,
+                                                       amsgrad=True
+                                                       )
+
+        self.optimizer_actor_policy = torch.optim.Adam(self.actor.parameters(),
+                                                       lr=1e-3,
+                                                       betas=(0.9, 0.999),
+                                                       eps=1e-08,
+                                                       weight_decay=1e-6,
+                                                       amsgrad=True
+                                                       )
+
         self.Q_MAX = 0.
         self.lossMSE = nn.MSELoss().to(self.device)
         self.lossL1 = nn.L1Loss().to(self.device)
@@ -193,7 +203,7 @@ class Agent:
             done = torch.stack(list(done), dim=0).clone().detach().to(self.device)
 
         # Note: Q learning part
-        Q_target, Q_current_1,Q_current_2 = self.vF.Q_value(self.eps,self.critic_1, self.critic_2, self.target_critic_1, self.target_critic_2, s, a, r, s_next, a_next, done, tid, ad_reward)
+        Q_target, Q_current_1,Q_current_2 = self.vF.Q_value(self.eps,self.actor,self.target_actor,self.critic_1, self.critic_2, self.target_critic_1, self.target_critic_2, s, a, r, s_next, a_next, done, tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
 
         self.optimizer_critic_1.zero_grad()
@@ -217,22 +227,17 @@ class Agent:
         actor_loss = 0.
         # Note : Policy gradient part
         for i in range(0, 3):
-            idx = random.randint(0,1)
-            if idx == 0:
-                q_ratio_1 = 1/random.randint(2,20)
-                q_ratio_2 = 1. - q_ratio_1
-            else:
-                q_ratio_2 = 1 / random.randint(2, 20)
-                q_ratio_1 = 1. - q_ratio_2
-            log_probs = torch.log(a[i] + 1e-8).squeeze(1) # Note: Log is less computationaly efficient than log_softmax but better in the context of raw logits
-            log_probs_for_action = log_probs.gather(1, a[i].squeeze(1).long())
-            actor_loss += -(log_probs_for_action * (q_ratio_1*Q_current_1[i].detach()+q_ratio_2*Q_current_2[i].detach())).mean() # Note : reversed gradient descend for maximize actor probability of highest rewards (returns in the simple gradient method but Q value in the mixed scenario)
+            q_ratio = np.random.dirichlet(np.ones(2), size=1)[0]
+            #a_s = torch.argmax(a[i],dim=-1,keepdim=True)
+            log_probs = torch.log(a[i] + 1e-8) # Note: Log is less computationaly efficient than log_softmax but better in the context of raw logits
+            #log_probs_for_action = log_probs.gather(1, a_s)
+            actor_loss += -(log_probs * (q_ratio[0]*Q_current_1[i].detach()+q_ratio[1]*Q_current_2[i].detach())).mean() # Note : reversed gradient descend for maximize actor probability of highest rewards (returns in the simple gradient method but Q value in the mixed scenario)
             entropy_bonus = -(a[i] * log_probs).sum(dim=-1).mean()
             actor_loss +=-0.01 * entropy_bonus
 
-        self.optimizer_actor.zero_grad()
+        self.optimizer_actor_policy.zero_grad()
         actor_loss.backward()
-        self.optimizer_actor.step()
+        self.optimizer_actor_policy.step()
 
         for i, priority in enumerate(td_errors):
             experience = self.memory[i]
@@ -241,7 +246,6 @@ class Agent:
             self.memory[i] = updated_experience
         self.vF.soft_update(self.critic_1, self.target_critic_1)
         self.vF.soft_update(self.critic_2, self.target_critic_2)
-
         ###### COMPUTATIONAL GRAPH GENERATION ######
         # dot = make_dot(prediction, params=dict(self.net.named_parameters()))
         # dot.render(directory='doctest-output', view=True)
@@ -300,7 +304,7 @@ class Agent:
 
         s = torch.cat((patient, turn, done), dim=0)
         input_state = torch.cat((s, s), dim=0)
-        input_state +=input_state*torch.rand_like(input_state)*self.eps*(1e-2/self.vF.epsilon)
+        input_state +=input_state*torch.rand_like(input_state)*(1e-2/self.vF.epsilon)#*self.eps
 
         # print(s)
         return input_state, done, game_over
@@ -325,7 +329,8 @@ class Agent:
         is_random = 0
         explore_coef = self.vF.epsilon
         hair_type, skin_type, _ = dataset.decode_input(state)
-        self.eps = (1e-6 + 0.999 * np.exp(-1.1e-2 * self.total_counter))
+        if self.total_counter %5 == 0:
+            self.eps = (1e-6 + 0.999 * np.exp(-1.3e-2 * self.total_counter))
         if game.cycle > game.game_cycles * 0.95:
             self.eps = 0.
         if   np.random.uniform(0,self.eps) > explore_coef:
@@ -343,7 +348,8 @@ class Agent:
         is_random = 0
         explore_coef = self.vF.epsilon
         hair_type, skin_type, _ = dataset.decode_input(state_next)
-        self.eps = (1e-6 + 0.999 * np.exp(-1.1e-2 * self.total_counter))
+        if self.total_counter % 5 == 0:
+            self.eps = (1e-6 + 0.999 * np.exp(-1.3e-2 * self.total_counter))
         if game.cycle > game.game_cycles * 0.95:
             self.eps = 0.
         if  np.random.uniform(0,self.eps) > explore_coef:

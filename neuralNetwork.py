@@ -153,7 +153,7 @@ class NeuralNetwork_SA(nn.Module):
         self.task_indicator = None
         self.no_of_actions = no_of_actions
         self.no_of_states = no_of_states
-        self.hidden_size = 128
+        self.hidden_size = 256
         self.modulation_resolution = 10
         self.modulation_scale = 2
         self.device = device
@@ -161,8 +161,12 @@ class NeuralNetwork_SA(nn.Module):
         self.hidden_state_action = self.input + self.hidden_size
         self.act = nn.LeakyReLU(0.1)#nn.ELU(2)
 
-        self.linear1 = nn.Linear(self.input, self.input*2, bias=True)
-        self.linear2 = nn.Linear(self.input*2, self.hidden_size*2, bias=True)
+        self.linear1_a0 = nn.Linear(self.no_of_actions, self.input*2, bias=True)
+        self.linear1_a1 = nn.Linear(self.no_of_actions, self.input*2, bias=True)
+        self.linear1_a2 = nn.Linear(self.no_of_actions, self.input*2, bias=True)
+        self.linear1_c = nn.Linear(self.no_of_states * 2 + 32, self.input*2, bias=True)
+
+        self.linear2 = nn.Linear(self.input*8, self.hidden_size*2, bias=True)
         self.res_blocks = nn.Sequential(*[ResidualBlock(self.hidden_size * 2, dropout=0.1) for _ in range(10)])
 
         self.linear3 = nn.Linear(self.hidden_size*2, self.hidden_size, bias=True)
@@ -175,7 +179,7 @@ class NeuralNetwork_SA(nn.Module):
         self.linear5_2 = nn.Linear(self.no_of_actions, self.no_of_actions, bias=True)
         self.linear5_3 = nn.Linear(self.no_of_actions, self.no_of_actions, bias=True)
 
-        self.LNorm1 = nn.LayerNorm(self.input*2)
+        self.LNorm1 = nn.LayerNorm(self.input*8)
         self.LNorm2 = nn.LayerNorm(self.hidden_size*2)
         self.LNorm3 = nn.LayerNorm(self.hidden_size )
         self.LNorm4_1 = nn.LayerNorm(self.no_of_actions)
@@ -202,12 +206,15 @@ class NeuralNetwork_SA(nn.Module):
                 action[i] = torch.squeeze(action[i], dim=0)
 
         context_input = torch.cat((state, task_id), dim=1)
-        context_input = torch.cat((context_input, action[0],action[1],action[2]), dim=1)
 
-        x = self.act(self.linear1(context_input))
-        x = self.LNorm1(x)
+        x0 = self.act(self.linear1_a0(action[0]))
+        x1 = self.act(self.linear1_a1(action[1]))
+        x2 = self.act(self.linear1_a2(action[2]))
+        c = self.act(self.linear1_c(context_input))
+        context_input = torch.cat([x0,x1,x2,c], dim=1)
+        #x = self.LNorm1(context_input)
 
-        x = self.act(self.linear2(x))
+        x = self.act(self.linear2(context_input))
         x = self.LNorm2(x)
 
         x = self.res_blocks(x)
