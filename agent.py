@@ -45,21 +45,21 @@ class Agent:
             self.device)
 
         # self.optimizer = torch.optim.SGD(self.net.parameters(), lr=0.001)
-        self.optimizer_critic_1 = torch.optim.Adam(self.critic_1.parameters(),
-                                                   lr=1e-3,
-                                                   betas=(0.9, 0.999),
-                                                   eps=1e-08,
-                                                   weight_decay=1e-6,
-                                                   amsgrad=True
-                                                   )
+        self.optimizer_q_value_critic_1 = torch.optim.Adam(self.critic_1.parameters(),
+                                                           lr=1e-3,
+                                                           betas=(0.9, 0.999),
+                                                           eps=1e-08,
+                                                           weight_decay=1e-6,
+                                                           amsgrad=True
+                                                           )
 
-        self.optimizer_critic_2 = torch.optim.Adam(self.critic_2.parameters(),
-                                                   lr=1e-3,
-                                                   betas=(0.9, 0.999),
-                                                   eps=1e-08,
-                                                   weight_decay=1e-6,
-                                                   amsgrad=True
-                                                   )
+        self.optimizer_q_value_critic_2 = torch.optim.Adam(self.critic_2.parameters(),
+                                                           lr=1e-3,
+                                                           betas=(0.9, 0.999),
+                                                           eps=1e-08,
+                                                           weight_decay=1e-6,
+                                                           amsgrad=True
+                                                           )
 
         self.optimizer_actor_Q_value = torch.optim.Adam(self.actor.parameters(),
                                                        lr=1e-3,
@@ -69,13 +69,13 @@ class Agent:
                                                        amsgrad=True
                                                        )
 
-        self.optimizer_actor_policy = torch.optim.Adam(self.actor.parameters(),
-                                                       lr=1e-3,
-                                                       betas=(0.9, 0.999),
-                                                       eps=1e-08,
-                                                       weight_decay=1e-6,
-                                                       amsgrad=True
-                                                       )
+        self.optimizer_actor_policy_gradient = torch.optim.Adam(self.actor.parameters(),
+                                                                lr=1e-3,
+                                                                betas=(0.9, 0.999),
+                                                                eps=1e-08,
+                                                                weight_decay=1e-6,
+                                                                amsgrad=True
+                                                                )
 
         self.Q_MAX = 0.
         self.lossMSE = nn.MSELoss().to(self.device)
@@ -203,41 +203,32 @@ class Agent:
             done = torch.stack(list(done), dim=0).clone().detach().to(self.device)
 
         # Note: Q learning part
-        Q_target, Q_current_1,Q_current_2 = self.vF.Q_value(self.eps,self.actor,self.target_actor,self.critic_1, self.critic_2, self.target_critic_1, self.target_critic_2, s, a, r, s_next, a_next, done, tid, ad_reward)
+        Q_target, Q_current_1,Q_current_2,Q_current_a = self.vF.Q_value(self.eps,self.actor,self.target_actor,self.critic_1, self.critic_2, self.target_critic_1, self.target_critic_2, s, a, r, s_next, a_next, done, tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
 
-        self.optimizer_critic_1.zero_grad()
-        l_1 = self.lossHuber(Q_target[0], Q_current_1[0])
-        for i in range(1,3):
+        self.optimizer_q_value_critic_1.zero_grad()
+        l_1 = 0.
+        for i in range(0,3):
             l_1 += self.lossHuber(Q_target[i], Q_current_1[i])
         l_1.backward()
-        self.optimizer_critic_1.step()
+        self.optimizer_q_value_critic_1.step()
 
-        self.optimizer_critic_2.zero_grad()
-        l_2 = self.lossHuber(Q_target[0], Q_current_2[0])
-        for i in range(1, 3):
+        self.optimizer_q_value_critic_2.zero_grad()
+        l_2 = 0.
+        for i in range(0, 3):
             l_2 += self.lossHuber(Q_target[i], Q_current_2[i])
         l_2.backward()
-        self.optimizer_critic_2.step()
+        self.optimizer_q_value_critic_2.step()
 
-        td_errors = sum(torch.abs(Q_target[i] - Q_current_1[i]).detach() + torch.abs(Q_target[i] - Q_current_2[i]).detach() + (1e-8 if i == 2 else 0) for i in range(3))
 
-        # Note : Prediction is Advantage
-        a = self.actor(s, tid)
-        actor_loss = 0.
-        # Note : Policy gradient part
+        self.optimizer_actor_policy_gradient.zero_grad()
+        l_a = 0.
         for i in range(0, 3):
-            q_ratio = np.random.dirichlet(np.ones(2), size=1)[0]
-            #a_s = torch.argmax(a[i],dim=-1,keepdim=True)
-            log_probs = torch.log(a[i] + 1e-8) # Note: Log is less computationaly efficient than log_softmax but better in the context of raw logits
-            #log_probs_for_action = log_probs.gather(1, a_s)
-            actor_loss += -(log_probs * (q_ratio[0]*Q_current_1[i].detach()+q_ratio[1]*Q_current_2[i].detach())).mean() # Note : reversed gradient descend for maximize actor probability of highest rewards (returns in the simple gradient method but Q value in the mixed scenario)
-            entropy_bonus = -(a[i] * log_probs).sum(dim=-1).mean()
-            actor_loss +=-0.01 * entropy_bonus
+            l_a -= torch.mean(Q_current_a[i]) # Note: Maximising Q_value of the policy
+        l_a.backward()
+        self.optimizer_actor_policy_gradient.step()
 
-        self.optimizer_actor_policy.zero_grad()
-        actor_loss.backward()
-        self.optimizer_actor_policy.step()
+        td_errors = sum(torch.abs(Q_target[i] - Q_current_1[i]).detach() + torch.abs(Q_target[i] - Q_current_2[i]).detach() + torch.abs(Q_target[i] - Q_current_a[i]).detach() + (1e-8 if i == 2 else 0) for i in range(3))
 
         for i, priority in enumerate(td_errors):
             experience = self.memory[i]
@@ -246,10 +237,11 @@ class Agent:
             self.memory[i] = updated_experience
         self.vF.soft_update(self.critic_1, self.target_critic_1)
         self.vF.soft_update(self.critic_2, self.target_critic_2)
+        self.vF.soft_update(self.actor, self.target_actor)
         ###### COMPUTATIONAL GRAPH GENERATION ######
         # dot = make_dot(prediction, params=dict(self.net.named_parameters()))
         # dot.render(directory='doctest-output', view=True)
-        return l_1.item() + l_2.item()
+        return l_1.item() + l_2.item() + l_a.item()
 
     def take_action(self, s,task_id, step_counter, dataset, game):
         _, _, body_part = dataset.decode_input(s)

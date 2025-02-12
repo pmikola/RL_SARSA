@@ -56,7 +56,7 @@ critic_2.to(device)
 valueFunc = Estimators(alpha, epsilon, gamma, tau, device, no_of_actions, v_min=-no_of_games * no_of_rounds,
                        v_max=no_of_games * no_of_rounds)
 agent = Agent(actor,target_actor, critic_1, critic_2, target_critic_1,target_critic_2, valueFunc, no_of_states, num_e_bits, num_m_bits, device)
-agent.BATCH_SIZE = 256
+agent.BATCH_SIZE = 128
 
 game = Game(valueFunc, agent, device, no_of_rounds)
 game.game_cycles = 50
