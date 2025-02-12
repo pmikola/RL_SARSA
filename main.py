@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from matplotlib.ticker import MaxNLocator
-from numpy import argmin
+from numpy import argmin, mean
 from torch import optim
 
 from agent import Agent
@@ -25,7 +25,7 @@ no_of_states = 14  # + num_e_bits + num_m_bits
 alpha = 1.
 epsilon = 1e-2
 gamma = 0.99
-tau = 0.01
+tau = 0.001
 no_of_games = 50
 no_of_rounds = 9
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -56,10 +56,10 @@ critic_2.to(device)
 valueFunc = Estimators(alpha, epsilon, gamma, tau, device, no_of_actions, v_min=-no_of_games * no_of_rounds,
                        v_max=no_of_games * no_of_rounds)
 agent = Agent(actor,target_actor, critic_1, critic_2, target_critic_1,target_critic_2, valueFunc, no_of_states, num_e_bits, num_m_bits, device)
-agent.BATCH_SIZE = 128
+agent.BATCH_SIZE = 32
 
 game = Game(valueFunc, agent, device, no_of_rounds)
-game.game_cycles = 50
+game.game_cycles = 20
 game.games = no_of_games
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
 r_data = []
@@ -82,8 +82,7 @@ for i in range(1, game.game_cycles + 1):
     print("GAME CYCLE : ", i)
     rewards, a_val, losses,head_rewards = game.playntrain(game, dataset, games=no_of_games)
     R = sum(rewards)
-    print("  REWARDS TOTAL : ",R, " ||  RANDOM GUESSES: ",
-          game.agent.no_of_guesses)
+    print("  REWARDS TOTAL : ",R, " ||  RANDOM GUESSES: ",game.agent.no_of_guesses," || NOISE EPS: ",game.agent.vF.epsilon)
     end = time.time()
     t = end - start
     total_time += t
@@ -97,10 +96,12 @@ for i in range(1, game.game_cycles + 1):
         r[2] = R
 
     game.total_counter = 0
-    game.agent.vF.epsilon+=(1/(game.game_cycles*2))
+    game.agent.vF.epsilon +=1e-2#(1/(game.game_cycles*2))
     game.task_id = random.randint(0,2)
+    game.agent.i_s = random.randint(0, 2)
     if game.cycle % 3 == 0:
         game.task_id = int(argmin(r))
+
     # Note: test  network with learning on
     if game.cycle >= game.game_cycles - 3:
         game.total_counter = 1e10

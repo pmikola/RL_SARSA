@@ -17,41 +17,42 @@ class NeuralNetwork_S(nn.Module):
         super(NeuralNetwork_S, self).__init__()
         self.no_of_actions = no_of_actions
         self.no_of_states = no_of_states
-        self.hidden_size = 128
+        self.hidden_size = 256
         self.device = device
         self.modulation_resolution = 10
         self.modulation_scale = 2
         self.input = self.no_of_states * 2
         self.hidden_state = self.input + self.hidden_size
-        self.act = nn.LeakyReLU(0.1)
+        self.act = nn.LeakyReLU(0.2)
 
         self.linear1 = nn.Linear(self.input, self.hidden_size, bias=True)
         self.linear2 = nn.Linear(self.hidden_size + self.input, self.hidden_size * 2, bias=True)
 
-        self.res_blocks = nn.Sequential(*[ResidualBlock(self.hidden_size * 2, dropout=0.1) for _ in range(10)])
-        self.linear4 = nn.Linear(self.hidden_size * 2 + self.input, self.hidden_size, bias=True)
+        self.res_blocks_1 = nn.Sequential(*[ResidualBlock(self.hidden_size * 2, dropout=0.1) for _ in range(1)])
+        self.res_blocks_2 = nn.Sequential(*[ResidualBlock(self.hidden_size * 2, dropout=0.1) for _ in range(1)])
+        self.res_blocks_3 = nn.Sequential(*[ResidualBlock(self.hidden_size * 2, dropout=0.1) for _ in range(1)])
 
-        self.ls_01 = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
-        self.ls_02 = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
-        self.ls_03 = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
+        self.ls_01 = nn.Linear(self.hidden_size * 2, self.hidden_size * 2, bias=True)
+        self.ls_02 = nn.Linear(self.hidden_size * 2, self.hidden_size * 2, bias=True)
+        self.ls_03 = nn.Linear(self.hidden_size * 2, self.hidden_size * 2, bias=True)
 
-        self.ls_11 = nn.Linear(self.hidden_size, self.hidden_size//2, bias=True)
-        self.ls_12 = nn.Linear(self.hidden_size, self.hidden_size//2, bias=True)
-        self.ls_13 = nn.Linear(self.hidden_size, self.hidden_size//2, bias=True)
+        self.ls_11 = nn.Linear(self.hidden_size * 2, self.hidden_size, bias=True)
+        self.ls_12 = nn.Linear(self.hidden_size * 2, self.hidden_size, bias=True)
+        self.ls_13 = nn.Linear(self.hidden_size * 2, self.hidden_size, bias=True)
 
-        self.ls1 = nn.Linear(self.hidden_size//2, self.no_of_actions, bias=True)
-        self.ls2 = nn.Linear(self.hidden_size//2, self.no_of_actions, bias=True)
-        self.ls3 = nn.Linear(self.hidden_size//2, self.no_of_actions, bias=True)
+        self.ls1 = nn.Linear(self.hidden_size, self.no_of_actions, bias=True)
+        self.ls2 = nn.Linear(self.hidden_size, self.no_of_actions, bias=True)
+        self.ls3 = nn.Linear(self.hidden_size, self.no_of_actions, bias=True)
 
         self.LNorm1 = nn.LayerNorm(self.hidden_size)
         self.LNorm2 = nn.LayerNorm(self.hidden_size * 2)
-        self.LNorm4 = nn.LayerNorm(self.hidden_size)
-        self.LNorm_ls01 = nn.LayerNorm(self.hidden_size)
-        self.LNorm_ls02 = nn.LayerNorm(self.hidden_size)
-        self.LNorm_ls03 = nn.LayerNorm(self.hidden_size)
-        self.LNorm_ls11 = nn.LayerNorm(self.hidden_size//2)
-        self.LNorm_ls12 = nn.LayerNorm(self.hidden_size//2)
-        self.LNorm_ls13 = nn.LayerNorm(self.hidden_size//2)
+        self.LNorm4 = nn.LayerNorm(self.hidden_size * 2)
+        self.LNorm_ls01 = nn.LayerNorm(self.hidden_size * 2)
+        self.LNorm_ls02 = nn.LayerNorm(self.hidden_size * 2)
+        self.LNorm_ls03 = nn.LayerNorm(self.hidden_size * 2)
+        self.LNorm_ls11 = nn.LayerNorm(self.hidden_size)
+        self.LNorm_ls12 = nn.LayerNorm(self.hidden_size)
+        self.LNorm_ls13 = nn.LayerNorm(self.hidden_size)
         self.apply(self._init_weights)
         task_indicator_vectors = self.generate_orthogonal_vectors(3, 32)
         self.task_indicator = nn.Parameter(task_indicator_vectors,requires_grad=True)
@@ -74,30 +75,29 @@ class NeuralNetwork_S(nn.Module):
         x = self.act(self.linear2(x))
         x = self.LNorm2(x)
 
-        x = self.res_blocks(x)
+        x1 = self.res_blocks_1(x)
+        x2 = self.res_blocks_2(x)
+        x3 = self.res_blocks_3(x)
 
-        x = torch.cat((x, state), dim=1)
-        x = self.act(self.linear4(x))
-        x = self.LNorm4(x)
-
-        x1 = self.act(self.ls_01(x))
+        x1 = self.act(self.ls_01(x1))
         x1 = self.LNorm_ls01(x1)
         x1 = self.act(self.ls_11(x1))
 
-        x2 = self.act(self.ls_02(x))
+        x2 = self.act(self.ls_02(x2))
         x2 = self.LNorm_ls02(x2)
         x2 = self.act(self.ls_12(x2))
 
-        x3 = self.act(self.ls_03(x))
+        x3 = self.act(self.ls_03(x3))
         x3 = self.LNorm_ls03(x3)
         x3 = self.act(self.ls_13(x3))
 
-        # ls1 = torch.softmax(self.ls1(x1),dim=-1)
-        # ls2 = torch.softmax(self.ls2(x2),dim=-1)
-        # ls3 = torch.softmax(self.ls3(x3),dim=-1)
-        ls1 = self.ls1(x1)
-        ls2 = self.ls2(x2)
-        ls3 = self.ls3(x3)
+        ls1 = torch.softmax(self.ls1(x1),dim=-1)
+        ls2 = torch.softmax(self.ls2(x2),dim=-1)
+        ls3 = torch.softmax(self.ls3(x3),dim=-1)
+
+        # ls1 = self.ls1(x1)
+        # ls2 = self.ls2(x2)
+        # ls3 = self.ls3(x3)
 
         if raw_output and not self.training:
             if t_id == 0:
@@ -168,15 +168,15 @@ class NeuralNetwork_SA(nn.Module):
         self.linear1_a1 = nn.Linear(self.no_of_actions, self.input*2, bias=True)
         self.linear1_a2 = nn.Linear(self.no_of_actions, self.input*2, bias=True)
         self.linear1_c = nn.Linear(self.no_of_states * 2 + 32, self.input*2, bias=True)
-
         self.linear2 = nn.Linear(self.input*8, self.hidden_size*2, bias=True)
-        self.res_blocks = nn.Sequential(*[ResidualBlock(self.hidden_size * 2, dropout=0.1) for _ in range(10)])
 
-        self.linear3 = nn.Linear(self.hidden_size*2, self.hidden_size, bias=True)
-        self.linear4_1 = nn.Linear(self.hidden_size, self.no_of_actions, bias=True)
+        self.res_blocks_1 = nn.Sequential(*[ResidualBlock(self.hidden_size * 2, dropout=0.1) for _ in range(1)])
+        self.res_blocks_2 = nn.Sequential(*[ResidualBlock(self.hidden_size * 2, dropout=0.1) for _ in range(1)])
+        self.res_blocks_3 = nn.Sequential(*[ResidualBlock(self.hidden_size * 2, dropout=0.1) for _ in range(1)])
 
-        self.linear4_2 = nn.Linear(self.hidden_size, self.no_of_actions, bias=True)
-        self.linear4_3 = nn.Linear(self.hidden_size, self.no_of_actions, bias=True)
+        self.linear4_1 = nn.Linear(self.hidden_size*2, self.no_of_actions, bias=True)
+        self.linear4_2 = nn.Linear(self.hidden_size*2, self.no_of_actions, bias=True)
+        self.linear4_3 = nn.Linear(self.hidden_size*2, self.no_of_actions, bias=True)
 
         self.linear5_1 = nn.Linear(self.no_of_actions, self.no_of_actions, bias=True)
         self.linear5_2 = nn.Linear(self.no_of_actions, self.no_of_actions, bias=True)
@@ -184,11 +184,10 @@ class NeuralNetwork_SA(nn.Module):
 
         self.LNorm1 = nn.LayerNorm(self.input*8)
         self.LNorm2 = nn.LayerNorm(self.hidden_size*2)
-        self.LNorm3 = nn.LayerNorm(self.hidden_size )
+        self.LNorm3 = nn.LayerNorm(self.hidden_size*2 )
         self.LNorm4_1 = nn.LayerNorm(self.no_of_actions)
         self.LNorm4_2 = nn.LayerNorm(self.no_of_actions)
         self.LNorm4_3 = nn.LayerNorm(self.no_of_actions)
-
         self.apply(self._init_weights)
 
     def forward(self, state, action, t_id):
@@ -220,14 +219,13 @@ class NeuralNetwork_SA(nn.Module):
         x = self.act(self.linear2(context_input))
         x = self.LNorm2(x)
 
-        x = self.res_blocks(x)
+        x1 = self.res_blocks_1(x)
+        x2 = self.res_blocks_2(x)
+        x3 = self.res_blocks_3(x)
 
-        x = self.act(self.linear3(x))
-        x = self.LNorm3(x)
-
-        x1 = self.act(self.linear4_1(x))
-        x2 = self.act(self.linear4_2(x))
-        x3 = self.act(self.linear4_3(x))
+        x1 = self.act(self.linear4_1(x1))
+        x2 = self.act(self.linear4_2(x2))
+        x3 = self.act(self.linear4_3(x3))
 
         x1 = self.LNorm4_1(x1)
         x2 = self.LNorm4_2(x2)
