@@ -38,7 +38,7 @@ class Agent:
         self.sign = torch.tensor([1.]).to(device)
         self.no_of_guesses = 0.
         self.BATCH_SIZE = 64
-        self.MAX_MEMORY = 10000
+        self.MAX_MEMORY = 20000
         self.MAX_PRIORITY = torch.tensor(1.).to(device)
         self.vF = valueFunction
         self.memory = deque(maxlen=self.MAX_MEMORY)  # popleft()
@@ -49,7 +49,7 @@ class Agent:
 
         # self.optimizer = torch.optim.SGD(self.net.parameters(), lr=0.001)
         self.optimizer_q_value_critic_1 = torch.optim.Adam(self.critic_1.parameters(),
-                                                           lr=1e-4,
+                                                           lr=5e-4,
                                                            betas=(0.9, 0.999),
                                                            eps=1e-08,
                                                            weight_decay=1e-6,
@@ -57,7 +57,7 @@ class Agent:
                                                            )
 
         self.optimizer_q_value_critic_2 = torch.optim.Adam(self.critic_2.parameters(),
-                                                           lr=1e-4,
+                                                           lr=5e-4,
                                                            betas=(0.9, 0.999),
                                                            eps=1e-08,
                                                            weight_decay=1e-6,
@@ -65,17 +65,16 @@ class Agent:
                                                            )
 
         self.optimizer_actor_policy_gradient = torch.optim.Adam(self.actor.parameters(),
-                                                                lr=1e-4,
+                                                                lr=5e-4,
                                                                 betas=(0.9, 0.999),
                                                                 eps=1e-08,
                                                                 weight_decay=1e-6,
-                                                                amsgrad=True
-                                                                )
+                                                                amsgrad=True)
 
         self.Q_MAX = 0.
         self.lossMSE = nn.MSELoss().to(self.device)
         self.lossL1 = nn.L1Loss().to(self.device)
-        self.lossHuber = nn.HuberLoss().to(self.device)
+        self.loss_fn = nn.HuberLoss().to(self.device)
         self.lossKLD = nn.KLDivLoss(reduction="batchmean", log_target=True).to(device)
         # self.loss2 = nn.MSELoss(reduction='sum').to(self.device)
 
@@ -196,27 +195,49 @@ class Agent:
             done = torch.stack(list(done), dim=0).clone().detach().to(self.device)
 
         # Note: Q learning part
-        Q_target, Q_current_1,Q_current_2,Q_current_a = self.vF.Q_value(self.eps,self.actor,self.target_actor,self.critic_1, self.critic_2, self.target_critic_1, self.target_critic_2, s, a, r, s_next, a_next, done, tid, ad_reward)
+        Q_target = self.vF.Q_value(self.eps,self.actor,self.target_actor,self.critic_1, self.critic_2, self.target_critic_1, self.target_critic_2, s, a, r, s_next, a_next, done, tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
 
+        Q_current_1 = self.critic_1(s.detach(), a, tid.detach())
+        Q_current_2 = self.critic_2(s.detach(), a, tid.detach())
         self.optimizer_q_value_critic_1.zero_grad()
-
-        l_1 = self.lossHuber(Q_target[self.i_s], Q_current_1[self.i_s])
+        l_1 = 0
+        if self.total_counter % 2 == 0:
+            l_1 += self.loss_fn( Q_current_1[self.i_s],Q_target[self.i_s])
+        else:
+            for i in range(0,3):
+                self.i_s = i
+                l_1 += self.loss_fn( Q_current_1[self.i_s],Q_target[self.i_s])
         l_1.backward()
         self.optimizer_q_value_critic_1.step()
 
         self.optimizer_q_value_critic_2.zero_grad()
-        l_2 = self.lossHuber(Q_target[self.i_s], Q_current_2[self.i_s])
+        l_2 = 0.
+        if self.total_counter % 2 == 0:
+            l_2 += self.loss_fn(Q_current_2[self.i_s],Q_target[self.i_s])
+        else:
+            for i in range(0, 3):
+                self.i_s = i
+                l_2 += self.loss_fn(Q_current_2[self.i_s],Q_target[self.i_s])
         l_2.backward()
         self.optimizer_q_value_critic_2.step()
 
+        v_policy = self.actor(s.detach(), tid.detach())
+        Qvalue = self.critic_1(s.detach(), v_policy, tid)
         self.optimizer_actor_policy_gradient.zero_grad()
-        l_a = -torch.mean(Q_current_a[self.i_s]*0.5*(Q_current_1[self.i_s].detach()+Q_current_2[self.i_s].detach())) # Note: Maximising Q_value of the policy
+        l_a = 0.
+        if self.total_counter % 2 == 0:
+            l_a += -torch.mean(torch.log(v_policy[self.i_s]+1e-8)+Qvalue[self.i_s]) # Note: Maximising Q_value of the policy
+            #l_a += self.lossHuber(Q_target[self.i_s], Q_current_a[self.i_s])
+        else:
+            for i in range(0, 3):
+                self.i_s = i
+                l_a += -torch.mean(torch.log(v_policy[self.i_s]+1e-8)+Qvalue[self.i_s]) # Note: Maximising Q_value of the policy
+                #l_a += self.lossHuber(Q_target[self.i_s], Q_current_a[self.i_s])
         l_a.backward()
         self.optimizer_actor_policy_gradient.step()
 
         td_errors = sum(torch.abs(Q_target[i] - Q_current_1[i]).detach() + torch.abs(Q_target[i] - Q_current_2[i]).detach()+ (1e-8 if i == 2 else 0) for i in range(3))
-
         for i, priority in enumerate(td_errors):
             experience = self.memory[i]
             p = torch.max(priority)
@@ -389,8 +410,8 @@ class Agent:
         reward_table_0 = (torch.exp(reward_table_0 * strength_coeff_r) - 1) / (torch.exp(torch.tensor(strength_coeff_r).to(self.device)) - 1)
         reward_table_1 = (torch.exp(reward_table_1 * strength_coeff_r) - 1) / (torch.exp(torch.tensor(strength_coeff_r).to(self.device)) - 1)
         reward_table = torch.cat([reward_table_0, reward_table_1],dim=0)
-        punishment_table_0 = torch.linspace(0.2, 0.1, no_steps // 2).to(self.device)
-        punishment_table_1 = torch.linspace(0.1, 0.2, no_steps // 2).to(self.device)
+        punishment_table_0 = torch.linspace(0.9, 0.1, no_steps // 2).to(self.device)
+        punishment_table_1 = torch.linspace(0.1, 0.9, no_steps // 2).to(self.device)
         punishment_table_0 = (torch.exp(punishment_table_0 * strength_coeff_p) - 1) / (torch.exp(torch.tensor(strength_coeff_p).to(self.device)) - 1)
         punishment_table_1 = (torch.exp(punishment_table_1 * strength_coeff_p) - 1) / (torch.exp(torch.tensor(strength_coeff_p).to(self.device)) - 1)
         punishment_table = torch.cat([punishment_table_0, punishment_table_1], dim=0)
@@ -468,9 +489,8 @@ class Agent:
         if step_counter == 8 and reward*0.34 >= 9:
             additional_reward = 25.
         self.i_s = random.randint(0, 2)
-        if self.total_counter % 2 == 0:
-            idx = int(argmin([r_h0,r_h1,r_h2]))
-            self.i_s = idx
+        idx = int(argmin([r_h0,r_h1,r_h2]))
+        self.i_s = idx
         return reward, additional_reward,[r_h0,r_h1,r_h2]
 
     def int2binary(self, step_counter):

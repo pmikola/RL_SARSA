@@ -13,7 +13,7 @@ from agent import Agent
 from dataset import DataSet
 from game import Game
 from estimators import Estimators
-from neuralNetwork import NeuralNetwork_SA, NeuralNetwork_S
+from neuralNetwork import QNetwork, ValueNetwork
 
 # device = 'cuda' if torch.cuda.is_available() else 'cpu'
 # x = dataSet.decode_input(dataSet.create_input_set())
@@ -22,10 +22,10 @@ no_of_actions = 256
 num_e_bits = 5
 num_m_bits = 10
 no_of_states = 14  # + num_e_bits + num_m_bits
-alpha = 1.
+alpha = 0.99
 epsilon = 1e-2
 gamma = 0.99
-tau = 0.001
+tau = 0.005
 no_of_games = 50
 no_of_rounds = 9
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -35,13 +35,14 @@ dataset = DataSet(device)
 torch.manual_seed(2023)
 random.seed(2023)
 np.random.seed(2023)
-actor = NeuralNetwork_S(no_of_actions, no_of_states, device)
-target_actor = NeuralNetwork_S(no_of_actions, no_of_states, device)
 
-target_critic_1 = NeuralNetwork_SA(no_of_actions, no_of_states, device)
-target_critic_2 = NeuralNetwork_SA(no_of_actions, no_of_states, device)
-critic_1 = NeuralNetwork_SA(no_of_actions, no_of_states, device)
-critic_2 = NeuralNetwork_SA(no_of_actions, no_of_states, device)
+actor = ValueNetwork(no_of_actions, no_of_states, device)
+target_actor = ValueNetwork(no_of_actions, no_of_states, device)
+
+target_critic_1 = QNetwork(no_of_actions, no_of_states, device)
+target_critic_2 = QNetwork(no_of_actions, no_of_states, device)
+critic_1 = QNetwork(no_of_actions, no_of_states, device)
+critic_2 = QNetwork(no_of_actions, no_of_states, device)
 critic_1.task_indicator = actor.task_indicator
 critic_2.task_indicator = actor.task_indicator
 target_critic_1.task_indicator = actor.task_indicator
@@ -59,7 +60,7 @@ agent = Agent(actor,target_actor, critic_1, critic_2, target_critic_1,target_cri
 agent.BATCH_SIZE = 32
 
 game = Game(valueFunc, agent, device, no_of_rounds)
-game.game_cycles = 20
+game.game_cycles = 100
 game.games = no_of_games
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
 r_data = []
