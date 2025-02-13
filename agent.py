@@ -197,7 +197,7 @@ class Agent:
         # Note: Q learning part
         Q_target = self.vF.Q_value(self.eps,self.actor,self.target_actor,self.critic_1, self.critic_2, self.target_critic_1, self.target_critic_2, s, a, r, s_next, a_next, done, tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
-
+        print(tid)
         Q_current_1 = self.critic_1(s.detach(), a, tid.detach())
         Q_current_2 = self.critic_2(s.detach(), a, tid.detach())
         self.optimizer_q_value_critic_1.zero_grad()
