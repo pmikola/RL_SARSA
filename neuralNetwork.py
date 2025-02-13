@@ -16,7 +16,7 @@ class MultiHeadLayer(nn.Module):
     def __init__(self, hidden_size, no_of_actions):
         super(MultiHeadLayer, self).__init__()
         self.heads = nn.ModuleList([
-            nn.Sequential(#*[ResidualBlock(hidden_size, dropout=0.1) for _ in range(1)],
+            nn.Sequential(*[ResidualBlock(hidden_size, dropout=0.1) for _ in range(1)],
             nn.Linear(hidden_size, no_of_actions, bias=True))
             for _ in range(3)
         ])

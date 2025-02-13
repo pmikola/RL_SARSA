@@ -227,12 +227,16 @@ class Agent:
         self.optimizer_actor_policy_gradient.zero_grad()
         l_a = 0.
         if self.total_counter % 2 == 0:
-            l_a += -torch.mean(torch.log(v_policy[self.i_s]+1e-8)+Qvalue[self.i_s]) # Note: Maximising Q_value of the policy
+            chosen_action_log_prob = torch.log(v_policy[self.i_s].gather(1, torch.argmax(a[self.i_s],dim=-1).unsqueeze(1)) + 1e-8)
+            chosen_action_Q = Qvalue[self.i_s].gather(1, torch.argmax(a[self.i_s],dim=-1).unsqueeze(1))
+            l_a += -torch.mean(chosen_action_Q*chosen_action_log_prob) # Note: Maximising Q_value of the policy
             #l_a += self.lossHuber(Q_target[self.i_s], Q_current_a[self.i_s])
         else:
             for i in range(0, 3):
                 self.i_s = i
-                l_a += -torch.mean(torch.log(v_policy[self.i_s]+1e-8)+Qvalue[self.i_s]) # Note: Maximising Q_value of the policy
+                chosen_action_log_prob = torch.log(v_policy[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1)) + 1e-8)
+                chosen_action_Q = Qvalue[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
+                l_a += -torch.mean(chosen_action_Q*chosen_action_log_prob) # Note: Maximising Q_value of the policy
                 #l_a += self.lossHuber(Q_target[self.i_s], Q_current_a[self.i_s])
         l_a.backward()
         self.optimizer_actor_policy_gradient.step()

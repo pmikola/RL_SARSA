@@ -27,7 +27,7 @@ class Estimators:
             a_n_2 = []
             for i in range(0, 3):
                 noise_selector = random.randint(0, 1)
-                a_next_noise = (torch.rand_like(Q_next_a[i].detach()) * 2 - 1)*(1e-5/self.epsilon)#*eps
+                a_next_noise = 0.#(torch.rand_like(Q_next_a[i].detach()) * 2 - 1)*(1e-5/self.epsilon)#*eps
                 if noise_selector == 0:
                     a_n_1.append(Q_next_a[i].detach()+Q_next_a[i].detach()*a_next_noise)
                     a_n_2.append(Q_next_a[i].detach())
@@ -36,16 +36,23 @@ class Estimators:
                     a_n_2.append(Q_next_a[i].detach() + Q_next_a[i].detach() * a_next_noise)
             Q_next_1 = target_critic_1(s_next.detach(), a_n_1, task_indicator.detach())
             Q_next_2 = target_critic_2(s_next.detach(), a_n_2, task_indicator.detach())
-            r_t = torch.zeros_like(Q_next_1[0]).to(self.device)
-            Q_new = [r_t, r_t, r_t]
             z_t = torch.zeros_like(Q_next_1[0]).to(self.device)
             Q_target = [z_t, z_t, z_t]
             self.counter += 1
-            for i in range(0, 3):
+            q1n = critic_1(s_next.detach(), a_n_1, task_indicator.detach())
+            q2n = critic_2(s_next.detach(), a_n_2, task_indicator.detach())
+            for i in range(3):
                 idx_select = random.randint(0,1)
-                Q_next_target_updated =  0.5*(Q_next_1[i].clone() + Q_next_2[i].clone())
-                Q_new[i] =self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + ((1 - done) * self.gamma * Q_next_target_updated) )
-                Q_target[i] = Q_new[i]
+                a_star = Q_next_1[i].argmax(dim=-1,keepdims=True)
+                b_star = Q_next_2[i].argmax(dim=-1,keepdims=True)
+                Q_next_1_target = q1n[i].gather(-1, b_star)
+                Q_next_2_target = q2n[i].gather(-1, a_star)
+                Q_t_update = 0.5* ( Q_next_2_target.clone()+ Q_next_1_target.clone())
+                #print(Q_new[i].shape,r.unsqueeze(-1).shape , ad_reward.unsqueeze(-1).shape , done.shape, Q_next_target_updated.shape)
+                #q_target_up_a = self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + ((1 - done) * self.gamma * Q_next_1_target.clone()))
+                q_target_up_b = self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + ((1 - done) * self.gamma *Q_t_update))
+                Q_target[i].scatter_(1, b_star, q_target_up_b)
+                #Q_target[i].scatter_(1, b_star, q_target_up_a)
         return Q_target
 
     def soft_update(self, net, target_net):
