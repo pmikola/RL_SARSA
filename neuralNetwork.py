@@ -16,7 +16,9 @@ class MultiHeadLayer(nn.Module):
     def __init__(self, hidden_size, no_of_actions):
         super(MultiHeadLayer, self).__init__()
         self.heads = nn.ModuleList([
-            nn.Sequential(*[ResidualBlock(hidden_size, dropout=0.1) for _ in range(1)],
+            nn.Sequential(
+            nn.LayerNorm(hidden_size),
+            #*[ResidualBlock(hidden_size, dropout=0.1) for _ in range(1)],
             nn.Linear(hidden_size, no_of_actions, bias=True))
             for _ in range(3)
         ])
@@ -38,45 +40,65 @@ class ValueNetwork(nn.Module):
         self.act = nn.LeakyReLU(0.2)
 
         self.linear1 = nn.Linear(self.input, self.hidden_size, bias=True)
-        self.linear2 = nn.Linear(self.hidden_size + self.input+32, self.hidden_size * 2, bias=True)
+        self.linear2 = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
         self.head_groups = nn.ModuleDict({
-            "id0": MultiHeadLayer(self.hidden_size * 2,self.no_of_actions),
-            "id1": MultiHeadLayer(self.hidden_size * 2, self.no_of_actions),
-            "id2": MultiHeadLayer(self.hidden_size * 2, self.no_of_actions)
+            "id0": MultiHeadLayer(self.hidden_size,self.no_of_actions),
+            "id1": MultiHeadLayer(self.hidden_size, self.no_of_actions),
+            "id2": MultiHeadLayer(self.hidden_size, self.no_of_actions)
         })
-
         self.LNorm1 = nn.LayerNorm(self.hidden_size)
-        self.LNorm2 = nn.LayerNorm(self.hidden_size * 2)
-
+        self.LNorm2 = nn.LayerNorm(self.hidden_size)
         self.apply(self._init_weights)
-        task_indicator_vectors = self.generate_orthogonal_vectors(3, 32)
-        self.task_indicator = nn.Parameter(task_indicator_vectors,requires_grad=True)
+        #task_indicator_vectors = self.generate_orthogonal_vectors(3, 64)
+        #self.task_indicator = nn.Parameter(task_indicator_vectors,requires_grad=True)
         self.limits = nn.Parameter(torch.tensor([0.,30.,0.,15.,0.,28.]),requires_grad=False)
+        self.idx_to_str = {
+            0: "id0",
+            1: "id1",
+            2: "id2"
+        }
 
     def forward(self, state, t_id,raw_output=False):
         if isinstance(t_id, int):
             t_id = torch.tensor([t_id]).to(self.device)
         t_id = t_id.long() if isinstance(t_id, torch.Tensor) else torch.tensor(t_id, dtype=torch.long)
-        task_id = self.task_indicator[t_id].squeeze(1)
-        if task_id.dim() == 3:
-            task_id = self.task_indicator[t_id].squeeze(0)
+
         if state.dim() < 2:
             state = torch.unsqueeze(state, dim=0)
-
         x = self.act(self.linear1(state))
         x = self.LNorm1(x)
-        x = torch.cat([x, state,task_id], dim=1)
+        #x = torch.cat([x,task_id], dim=1)
         x = self.act(self.linear2(x))
         x = self.LNorm2(x)
-        group_index = int(torch.mean(t_id.float()).item())
-        key = f"id{group_index}"
-        selected_heads = self.head_groups[key]
-        ls_out = selected_heads(x)
-        ls1 = torch.softmax(ls_out[0],dim=-1)
-        ls2 = torch.softmax(ls_out[1],dim=-1)
-        ls3 = torch.softmax(ls_out[2],dim=-1)
+
+        index_tensor = t_id.cpu()
+        index_array = index_tensor[0].tolist()
+        is_int = isinstance( index_array, int)
+        if is_int:
+            index_array = [index_array]
+        keys = [self.idx_to_str[val] for val in index_array]
+        o_1 = []
+        o_2 = []
+        o_3 = []
+        i = 0
+        for key in keys:
+            x_key = x[i,:].unsqueeze(0)
+            selected_heads = self.head_groups[key]
+            ls_out = selected_heads(x_key)
+            o_1.append(ls_out[0])
+            o_2.append(ls_out[1])
+            o_3.append(ls_out[2])
+            i +=1
+        ls1 = torch.cat(o_1, dim=0)
+        ls2 = torch.cat(o_2, dim=0)
+        ls3 = torch.cat(o_3, dim=0)
+        ls1 = torch.softmax(ls1,dim=-1)
+        ls2 = torch.softmax(ls2,dim=-1)
+        ls3 = torch.softmax(ls3,dim=-1)
+
 
         if raw_output and not self.training:
+            group_index = int(torch.mean(t_id.float()).item())
             if group_index == 0:
                 idx=0
             elif group_index == 1:
@@ -124,7 +146,6 @@ class ValueNetwork(nn.Module):
             for j in range(i):
                 new_vec -= torch.dot(orthogonal_vectors[j], vectors[i]) * orthogonal_vectors[j]
             orthogonal_vectors[i] = new_vec / new_vec.norm()  # Normalize
-
         return orthogonal_vectors
 
 class QNetwork(nn.Module):
@@ -144,24 +165,26 @@ class QNetwork(nn.Module):
         self.linear1_a0 = nn.Linear(self.no_of_actions, self.input*2, bias=True)
         self.linear1_a1 = nn.Linear(self.no_of_actions, self.input*2, bias=True)
         self.linear1_a2 = nn.Linear(self.no_of_actions, self.input*2, bias=True)
-        self.linear1_c = nn.Linear(self.no_of_states * 2 + 32, self.input*2, bias=True)
-        self.linear2 = nn.Linear(self.input*8, self.hidden_size*2, bias=True)
+        self.linear1_c = nn.Linear(self.no_of_states * 2 , self.input*2, bias=True)
+        self.linear2 = nn.Linear(self.input*8, self.hidden_size, bias=True)
         self.head_groups = nn.ModuleDict({
-            "id0": MultiHeadLayer(self.hidden_size * 2, self.no_of_actions),
-            "id1": MultiHeadLayer(self.hidden_size * 2, self.no_of_actions),
-            "id2": MultiHeadLayer(self.hidden_size * 2, self.no_of_actions)
+            "id0": MultiHeadLayer(self.hidden_size, self.no_of_actions),
+            "id1": MultiHeadLayer(self.hidden_size, self.no_of_actions),
+            "id2": MultiHeadLayer(self.hidden_size, self.no_of_actions)
         })
         self.LNorm1 = nn.LayerNorm(self.input*8)
-        self.LNorm2 = nn.LayerNorm(self.hidden_size*2)
+        self.LNorm2 = nn.LayerNorm(self.hidden_size)
         self.apply(self._init_weights)
+        self.idx_to_str = {
+            0: "id0",
+            1: "id1",
+            2: "id2"
+        }
 
     def forward(self, state, action, t_id):
         if isinstance(t_id, int):
             t_id = torch.tensor([t_id]).to(self.device)
         t_id = t_id.long() if isinstance(t_id, torch.Tensor) else torch.tensor(t_id, dtype=torch.long)
-        task_id = self.task_indicator[t_id].squeeze(1)
-        if task_id.dim() == 3:
-            task_id = self.task_indicator[t_id].squeeze(0)
         for i in range(0,3):
             action[i] = torch.squeeze(action[i], dim=0)
             if state.dim() < 2:
@@ -172,28 +195,39 @@ class QNetwork(nn.Module):
                 action[i] = torch.swapaxes(action[i], 0, 1)
                 action[i] = torch.squeeze(action[i], dim=0)
 
-        context_input = torch.cat((state, task_id), dim=1)
-
         x0 = self.act(self.linear1_a0(action[0]))
         x1 = self.act(self.linear1_a1(action[1]))
         x2 = self.act(self.linear1_a2(action[2]))
-        c = self.act(self.linear1_c(context_input))
+        c = self.act(self.linear1_c(state))
         context_input = torch.cat([x0,x1,x2,c], dim=1)
         #x = self.LNorm1(context_input)
 
         x = self.act(self.linear2(context_input))
         x = self.LNorm2(x)
+        index_tensor = t_id.cpu()
+        index_array = index_tensor[0].tolist()
+        is_int = isinstance(index_array, int)
+        if is_int:
+            index_array = [index_array]
+        keys = [self.idx_to_str[val] for val in index_array]
+        o_1 = []
+        o_2 = []
+        o_3 = []
+        i = 0
+        for key in keys:
 
-        group_index = int(torch.mean(t_id.float()).item())
-        key = f"id{group_index}"
-        selected_heads = self.head_groups[key]
-        ls_out = selected_heads(x)
-        ls1 = ls_out[0]
-        ls2 = ls_out[1]
-        ls3 = ls_out[2]
+            x_key = x[i, :].unsqueeze(0)
+            selected_heads = self.head_groups[key]
+            ls_out = selected_heads(x_key)
+            o_1.append(ls_out[0])
+            o_2.append(ls_out[1])
+            o_3.append(ls_out[2])
+            i += 1
+        ls1 = torch.cat(o_1, dim=0)
+        ls2 = torch.cat(o_2, dim=0)
+        ls3 = torch.cat(o_3, dim=0)
         x = [ls1, ls2, ls3]
         return x
-
 
     def _init_weights(self, module):
         if isinstance(module, nn.Embedding):
@@ -227,7 +261,7 @@ class ResidualBlock(nn.Module):
         self.fc2 = nn.Linear(hidden_dim, out_dim)
         self.norm2 = nn.LayerNorm(out_dim)
 
-        self.act = nn.ELU(2)  # or nn.Mish()
+        self.act = nn.Mish()
         self.dropout = nn.Dropout(dropout)
 
         if in_dim == out_dim:

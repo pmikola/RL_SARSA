@@ -25,7 +25,7 @@ no_of_states = 14  # + num_e_bits + num_m_bits
 alpha = 1.
 epsilon = 1e-2
 gamma = 0.99
-tau = 0.005
+tau = 0.001
 no_of_games = 50
 no_of_rounds = 9
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -43,10 +43,6 @@ target_critic_1 = QNetwork(no_of_actions, no_of_states, device)
 target_critic_2 = QNetwork(no_of_actions, no_of_states, device)
 critic_1 = QNetwork(no_of_actions, no_of_states, device)
 critic_2 = QNetwork(no_of_actions, no_of_states, device)
-critic_1.task_indicator = actor.task_indicator
-critic_2.task_indicator = actor.task_indicator
-target_critic_1.task_indicator = actor.task_indicator
-target_critic_2.task_indicator = actor.task_indicator
 
 actor.to(device)
 target_critic_1.to(device)
@@ -60,7 +56,7 @@ agent = Agent(actor,target_actor, critic_1, critic_2, target_critic_1,target_cri
 agent.BATCH_SIZE = 32
 
 game = Game(valueFunc, agent, device, no_of_rounds)
-game.game_cycles = 100
+game.game_cycles = 20
 game.games = no_of_games
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
 r_data = []
@@ -74,6 +70,10 @@ c_map_data = []
 h0_rewards = []
 h1_rewards = []
 h2_rewards = []
+task_rewards_0 = []
+task_rewards_1 = []
+task_rewards_2 = []
+
 total_time = 0.
 ax = plt.figure().gca()
 r = [0,0,0]
@@ -81,9 +81,9 @@ for i in range(1, game.game_cycles + 1):
     game.cycle = i
     start = time.time()
     print("GAME CYCLE : ", i)
-    rewards, a_val, losses,head_rewards = game.playntrain(game, dataset, games=no_of_games)
-    R = sum(rewards)
-    print("  REWARDS TOTAL : ",R, " ||  RANDOM GUESSES: ",game.agent.no_of_guesses," || NOISE EPS: ",game.agent.vF.epsilon)
+    rewards, a_val, losses,head_rewards,tids = game.playntrain(game, dataset, games=no_of_games)
+    R = round((sum(rewards)/(no_of_rounds*3*3*no_of_games))*100, 3)
+    print("REWARDS : ",R, "% ||  RANDOM GUESSES: ",game.agent.no_of_guesses," || NOISE EPS: ",game.agent.vF.epsilon)
     end = time.time()
     t = end - start
     total_time += t
@@ -99,9 +99,8 @@ for i in range(1, game.game_cycles + 1):
     game.total_counter = 0
     game.agent.vF.epsilon +=1e-2#(1/(game.game_cycles*2))
     game.task_id = random.randint(0,2)
-    game.agent.i_s = random.randint(0, 2)
-    if game.cycle % 3 == 0:
-        game.task_id = int(argmin(r))
+    # if game.cycle % 3 == 0:
+    #     game.task_id = int(argmin(r))
 
     # Note: test  network with learning on
     if game.cycle >= game.game_cycles - 3:
@@ -113,7 +112,9 @@ for i in range(1, game.game_cycles + 1):
     if game.cycle >= game.game_cycles - 1:
         game.total_counter = 1e10
         game.task_id = 2
-
+    task_rewards_0.append(r[0])
+    task_rewards_1.append(r[1])
+    task_rewards_2.append(r[2])
     h0_rewards.append(head_rewards[0])
     h1_rewards.append(head_rewards[1])
     h2_rewards.append(head_rewards[2])
@@ -162,7 +163,6 @@ plt.ylabel("Rewards")
 plt.grid()
 plt.show()
 
-
 h = plt.figure().gca()
 h.plot(h0_rewards,color='r',label='h0')
 h.plot(h1_rewards,color='g',label='h1')
@@ -174,8 +174,19 @@ plt.legend()
 plt.grid()
 plt.show()
 
+ll = plt.figure().gca()
+ll.plot(task_rewards_0,color='r',label='t0')
+ll.plot(task_rewards_1,color='g',label='t1')
+ll.plot(task_rewards_2,color='b',label='t2')
+
+plt.xlabel("No. Games")
+plt.ylabel("Task Rewards %")
+plt.legend()
+plt.grid()
+plt.show()
+
 b = plt.figure().gca()
-loss_total = np.array(sum(loss, [])) / no_of_rounds
+loss_total = np.array(sum(loss, []))
 b.plot(loss_total)
 
 plt.xlabel("No. Games")

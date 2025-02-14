@@ -39,7 +39,7 @@ class Agent:
         self.no_of_guesses = 0.
         self.BATCH_SIZE = 64
         self.MAX_MEMORY = 20000
-        self.MAX_PRIORITY = torch.tensor(1.).to(device)
+        self.MAX_PRIORITY = torch.tensor(-100).to(device)
         self.vF = valueFunction
         self.memory = deque(maxlen=self.MAX_MEMORY)  # popleft()
         self.device = device
@@ -49,7 +49,7 @@ class Agent:
 
         # self.optimizer = torch.optim.SGD(self.net.parameters(), lr=0.001)
         self.optimizer_q_value_critic_1 = torch.optim.Adam(self.critic_1.parameters(),
-                                                           lr=5e-4,
+                                                           lr=1e-4,
                                                            betas=(0.9, 0.999),
                                                            eps=1e-08,
                                                            weight_decay=1e-6,
@@ -57,7 +57,7 @@ class Agent:
                                                            )
 
         self.optimizer_q_value_critic_2 = torch.optim.Adam(self.critic_2.parameters(),
-                                                           lr=5e-4,
+                                                           lr=1e-4,
                                                            betas=(0.9, 0.999),
                                                            eps=1e-08,
                                                            weight_decay=1e-6,
@@ -65,7 +65,7 @@ class Agent:
                                                            )
 
         self.optimizer_actor_policy_gradient = torch.optim.Adam(self.actor.parameters(),
-                                                                lr=5e-4,
+                                                                lr=1e-4,
                                                                 betas=(0.9, 0.999),
                                                                 eps=1e-08,
                                                                 weight_decay=1e-6,
@@ -83,12 +83,12 @@ class Agent:
 
     def train_short_memory(self, state, a1,a2,a3, reward, next_state, a_next1,a_next2,a_next3, done, tid, ad_reward):
         if len(self.memory) > 0:
-            l = self.train_step(state, a1,a2,a3, reward, next_state, a_next1,a_next2,a_next3, done, tid, ad_reward)
-            return l
+            l,tid = self.train_step(state, a1,a2,a3, reward, next_state, a_next1,a_next2,a_next3, done, tid, ad_reward)
+            return l,tid
 
     def prioritized_replay(self, mini_sample, no_top_k):
         states, a1,a2,a3, rewards, next_states, a_next1,a_next2,a_next3, dones, tid, ad_reward, priorities = zip(*mini_sample)
-        prio = torch.stack(list(priorities), dim=0)
+        prio = torch.stack(list(priorities), dim=0).squeeze(dim=1)
         values, ind = torch.topk(prio, no_top_k)
         indexes = ind.type(torch.int64).tolist()
         # print(len(indexes))
@@ -117,7 +117,7 @@ class Agent:
             d.append(dones[i])
             t_id.append(tid[i])
             adr.append(ad_reward[i])
-        return s, a_1,a_2,a_3, r, s_next, a_next_1,a_next_2,a_next_3, d, t_id, ad_reward
+        return s, a_1,a_2,a_3, r, s_next, a_next_1,a_next_2,a_next_3, d, t_id, adr
 
     def train_long_memory(self, total_counter):
         k = 0
@@ -126,41 +126,30 @@ class Agent:
             if k == 1:
                 print("RANDOM")
             mini_sample = random.choices(self.memory, k=self.BATCH_SIZE)  # list of tuples
-            # mini_sample = self.memory
-            # time.sleep(1)
-            s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, p, ad_reward = zip(*mini_sample)
-            l = self.train_step(s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, ad_reward)
-        elif total_counter % 3 == 0 and len(self.memory) > self.BATCH_SIZE:
-            # PRIORITY HIGH LOSS EXPERIENCE REPLAY
-            if k == 1:
-                print("PRIORITY")
-            mini_sample = random.choices(self.memory, k=self.BATCH_SIZE)
-            s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, ad_reward = self.prioritized_replay(mini_sample, self.BATCH_SIZE)
-            l = self.train_step(s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, ad_reward)
+            s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, ad_reward, priorities = zip(*mini_sample)
+            l,tid = self.train_step(s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, ad_reward)
+        # elif total_counter % 3 == 0 and len(self.memory) > self.BATCH_SIZE:
+        #     # PRIORITY HIGH LOSS EXPERIENCE REPLAY
+        #     if k == 1:
+        #         print("PRIORITY")
+        #     mini_sample = random.choices(self.memory, k=4*self.BATCH_SIZE)
+        #     s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, ad_reward = self.prioritized_replay(mini_sample, self.BATCH_SIZE)
+        #     l,tid = self.train_step(s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, ad_reward)
         else:
             # RANDOM REPLAY
             if len(self.memory) > self.BATCH_SIZE:
                 if k == 1:
                     print("RANDOM -> BATCH SIZE")
                 mini_sample = random.sample(self.memory, self.BATCH_SIZE)
-                s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, p, ad_reward = zip(*mini_sample)
+                s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, ad_reward, priorities = zip(*mini_sample)
                 l = self.train_step(s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, ad_reward)
             else:
                 if k == 1:
                     print("MEMORY SIZE")
-                mini_sample = self.memory
-                s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, p, ad_reward = zip(*mini_sample)
-                # time.sleep(1)
-                l = self.train_step(s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, ad_reward)
-
-        return l
-
-    def loss2state(self, i, p, updated_experience):
-        self.loss_bits = \
-            float2bit(torch.tensor([p, p]), num_e_bits=self.num_e_bits, num_m_bits=self.num_m_bits, bias=127.)[0].to(self.device)
-        self.memory[i] = list(updated_experience)
-        for j in range(0, len(self.loss_bits)):
-            self.memory[i][0][j] = self.loss_bits[j]
+                mini_sample = random.choices(self.memory, k=self.BATCH_SIZE)
+                s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, ad_reward, priorities = zip(*mini_sample)
+                l,tid = self.train_step(s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, ad_reward)
+        return l,tid
 
     def train_step(self, s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, done, tid, ad_reward):
         if len(torch.stack(list(s), dim=0).shape) == 1:
@@ -197,28 +186,32 @@ class Agent:
         # Note: Q learning part
         Q_target = self.vF.Q_value(self.eps,self.actor,self.target_actor,self.critic_1, self.critic_2, self.target_critic_1, self.target_critic_2, s, a, r, s_next, a_next, done, tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
-        print(tid)
+        #single_head_til = 5
         Q_current_1 = self.critic_1(s.detach(), a, tid.detach())
         Q_current_2 = self.critic_2(s.detach(), a, tid.detach())
         self.optimizer_q_value_critic_1.zero_grad()
         l_1 = 0
-        if self.total_counter % 2 == 0:
-            l_1 += self.loss_fn( Q_current_1[self.i_s],Q_target[self.i_s])
-        else:
-            for i in range(0,3):
-                self.i_s = i
-                l_1 += self.loss_fn( Q_current_1[self.i_s],Q_target[self.i_s])
+        # if self.total_counter % single_head_til == 0:
+        #     chosen_action_Q = Q_current_1[self.i_s].gather(1, torch.argmax(a[self.i_s],dim=-1).unsqueeze(1))
+        #     l_1 += self.loss_fn( chosen_action_Q,Q_target[self.i_s])
+        # else:
+        for i in range(0,3):
+            self.i_s = i
+            chosen_action_Q = Q_current_1[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
+            l_1 += self.loss_fn( chosen_action_Q,Q_target[self.i_s])
         l_1.backward()
         self.optimizer_q_value_critic_1.step()
 
         self.optimizer_q_value_critic_2.zero_grad()
         l_2 = 0.
-        if self.total_counter % 2 == 0:
-            l_2 += self.loss_fn(Q_current_2[self.i_s],Q_target[self.i_s])
-        else:
-            for i in range(0, 3):
-                self.i_s = i
-                l_2 += self.loss_fn(Q_current_2[self.i_s],Q_target[self.i_s])
+        # if self.total_counter % single_head_til == 0:
+        #     chosen_action_Q = Q_current_2[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
+        #     l_2 += self.loss_fn(chosen_action_Q,Q_target[self.i_s])
+        # else:
+        for i in range(0, 3):
+            self.i_s = i
+            chosen_action_Q = Q_current_2[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
+            l_2 += self.loss_fn(chosen_action_Q,Q_target[self.i_s])
         l_2.backward()
         self.optimizer_q_value_critic_2.step()
 
@@ -226,34 +219,32 @@ class Agent:
         Qvalue = self.critic_1(s.detach(), v_policy, tid)
         self.optimizer_actor_policy_gradient.zero_grad()
         l_a = 0.
-        if self.total_counter % 2 == 0:
-            chosen_action_log_prob = torch.log(v_policy[self.i_s].gather(1, torch.argmax(a[self.i_s],dim=-1).unsqueeze(1)) + 1e-8)
-            chosen_action_Q = Qvalue[self.i_s].gather(1, torch.argmax(a[self.i_s],dim=-1).unsqueeze(1))
-            l_a += -torch.mean(chosen_action_Q*chosen_action_log_prob) # Note: Maximising Q_value of the policy
-            #l_a += self.lossHuber(Q_target[self.i_s], Q_current_a[self.i_s])
-        else:
-            for i in range(0, 3):
-                self.i_s = i
-                chosen_action_log_prob = torch.log(v_policy[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1)) + 1e-8)
-                chosen_action_Q = Qvalue[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
-                l_a += -torch.mean(chosen_action_Q*chosen_action_log_prob) # Note: Maximising Q_value of the policy
-                #l_a += self.lossHuber(Q_target[self.i_s], Q_current_a[self.i_s])
+        # if self.total_counter % single_head_til == 0:
+        #     chosen_action_log_prob = torch.log(v_policy[self.i_s].gather(1, torch.argmax(a[self.i_s],dim=-1).unsqueeze(1)) + 1e-8)
+        #     chosen_action_Q = Qvalue[self.i_s].gather(1, torch.argmax(a[self.i_s],dim=-1).unsqueeze(1))
+        #     l_a += -torch.mean(chosen_action_log_prob*chosen_action_Q) # Note: Maximising Q_value of the policy
+        # else:
+        for i in range(0, 3):
+            self.i_s = i
+            chosen_action_log_prob = torch.log(v_policy[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1)) + 1e-8)
+            chosen_action_Q = Qvalue[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
+            l_a += -torch.mean(chosen_action_log_prob*chosen_action_Q) # Note: Maximising Q_value of the policy
         l_a.backward()
         self.optimizer_actor_policy_gradient.step()
 
         td_errors = sum(torch.abs(Q_target[i] - Q_current_1[i]).detach() + torch.abs(Q_target[i] - Q_current_2[i]).detach()+ (1e-8 if i == 2 else 0) for i in range(3))
-        for i, priority in enumerate(td_errors):
-            experience = self.memory[i]
-            p = torch.max(priority)
-            updated_experience = (*experience[:-1], p)
-            self.memory[i] = updated_experience
+        if td_errors.shape[0] == 1:
+            td_errors = torch.mean(td_errors, dim=-1)
+            experience = self.memory[-1]
+            updated_experience = (*experience[:-1], td_errors)
+            self.memory[-1] = updated_experience
         self.vF.soft_update(self.critic_1, self.target_critic_1)
         self.vF.soft_update(self.critic_2, self.target_critic_2)
         self.vF.soft_update(self.actor, self.target_actor)
         ###### COMPUTATIONAL GRAPH GENERATION ######
         # dot = make_dot(prediction, params=dict(self.net.named_parameters()))
         # dot.render(directory='doctest-output', view=True)
-        return l_1.item() + l_2.item() + l_a.item()
+        return l_1.item() +l_2.item()+ l_a.item(),tid
 
     def take_action(self, s,task_id, step_counter, dataset, game):
         _, _, body_part = dataset.decode_input(s)
@@ -311,22 +302,6 @@ class Agent:
         # print(s)
         return input_state, done, game_over
 
-    def soft_argmax1d(self, input, beta=100):
-        *_, n = input.shape
-        softmax = nn.Softmax(dim=-1)
-        input = softmax(beta * input)
-        indices = torch.linspace(0, 1, n, device=self.device)
-        result = torch.sum((n - 1) * input * indices, dim=-1)
-        return result
-
-    def soft_argmin1d(self, input, beta=100):
-        *_, n = input.shape
-        softmin = nn.Softmin(dim=-1)
-        input = softmin(beta * input)
-        indices = torch.linspace(0, 1, n, device=self.device)
-        result = torch.sum((n - 1) * input * indices, dim=-1)
-        return result
-
     def chooseAction(self, state,task_id, dataset, game):
         is_random = 0
         explore_coef = self.vF.epsilon
@@ -335,7 +310,7 @@ class Agent:
             self.eps = (1e-6 + 0.999 * np.exp(-1.3e-2 * self.total_counter))
         if game.cycle > game.game_cycles * 0.95:
             self.eps = 0.
-        if   np.random.uniform(0,self.eps) > explore_coef:
+        if  np.random.uniform(0,self.eps) > explore_coef:
             a1 = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
             a2 = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
             a3 = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
@@ -355,15 +330,9 @@ class Agent:
         if game.cycle > game.game_cycles * 0.95:
             self.eps = 0.
         if  np.random.uniform(0,self.eps) > explore_coef:
-            act = np.random.uniform(-1., 1.)
-            mean = (game.lower_limit + game.upper_limit) / 2
-            a1 = torch.tensor(np.arcsin(act)*mean + mean).to(self.device)
-            act = np.random.uniform(-1., 1.)
-            mean = (game.lower_limit + game.upper_limit) / 2
-            a2 = torch.tensor(np.arcsin(act) * mean + mean).to(self.device)
-            act = np.random.uniform(-1., 1.)
-            mean = (game.lower_limit + game.upper_limit) / 2
-            a3 = torch.tensor(np.arcsin(act) * mean + mean).to(self.device)
+            a1 = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
+            a2 = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
+            a3 = torch.tensor(np.random.uniform(game.lower_limit, game.upper_limit))
             actions = [a1, a2, a3]
             is_random = 1
         else:
@@ -405,49 +374,26 @@ class Agent:
         ref_value_max_s2 = ref_value_s2 + ref_value_s2 * std / 100
         ref_value_min_s3 = ref_value_s3 - ref_value_s3 * std / 100
         ref_value_max_s3 = ref_value_s3 + ref_value_s3 * std / 100
-        no_steps = 256
+        no_steps = 1000
         strength_coeff_r = 1.
         strength_coeff_p = 1.
         additional_reward = 0.
         reward_table_0 = torch.linspace(0.1, 1, no_steps//2).to(self.device)
         reward_table_1 = torch.linspace(1, 0.1, no_steps//2).to(self.device)
-        reward_table_0 = (torch.exp(reward_table_0 * strength_coeff_r) - 1) / (torch.exp(torch.tensor(strength_coeff_r).to(self.device)) - 1)
-        reward_table_1 = (torch.exp(reward_table_1 * strength_coeff_r) - 1) / (torch.exp(torch.tensor(strength_coeff_r).to(self.device)) - 1)
+        #reward_table_0 = (torch.exp(reward_table_0 * strength_coeff_r) - 1) / (torch.exp(torch.tensor(strength_coeff_r).to(self.device)) - 1)
+        #reward_table_1 = (torch.exp(reward_table_1 * strength_coeff_r) - 1) / (torch.exp(torch.tensor(strength_coeff_r).to(self.device)) - 1)
         reward_table = torch.cat([reward_table_0, reward_table_1],dim=0)
-        punishment_table_0 = torch.linspace(0.9, 0.1, no_steps // 2).to(self.device)
+        punishment_table_0 = torch.linspace(0.3, 0.3, no_steps // 2).to(self.device)
         punishment_table_1 = torch.linspace(0.1, 0.9, no_steps // 2).to(self.device)
-        punishment_table_0 = (torch.exp(punishment_table_0 * strength_coeff_p) - 1) / (torch.exp(torch.tensor(strength_coeff_p).to(self.device)) - 1)
-        punishment_table_1 = (torch.exp(punishment_table_1 * strength_coeff_p) - 1) / (torch.exp(torch.tensor(strength_coeff_p).to(self.device)) - 1)
+        #punishment_table_0 = (torch.exp(punishment_table_0 * strength_coeff_p) - 1) / (torch.exp(torch.tensor(strength_coeff_p).to(self.device)) - 1)
+        #punishment_table_1 = (torch.exp(punishment_table_1 * strength_coeff_p) - 1) / (torch.exp(torch.tensor(strength_coeff_p).to(self.device)) - 1)
         punishment_table = torch.cat([punishment_table_0, punishment_table_1], dim=0)
-
-        # if step_counter == 0:
-        #     self.c = not self.c
-        #     # print(self.counter)
-        # if skin_type > 2 or hair_type > 1:
-        #     if action_value[0] >= 1.:
-        #         additional_reward -= -1
-        #     else:
-        #         reward += 1.
-        #         r_h0 +=1
-        #     if action_value[1] >= 1.:
-        #         additional_reward -= -1
-        #     else:
-        #         reward += 1.
-        #         r_h1 +=1
-        #
-        #     if action_value[2] >= 1.:
-        #         additional_reward -= -1
-        #     else:
-        #         reward += 1.
-        #         r_h2 +=1
-        #
-        # else:
-        if ref_value_min_s1 < action_value[0] < ref_value_max_s1:
+        if ref_value_min_s1 < action_value[0].item() < ref_value_max_s1:
             distance_vals = torch.linspace(ref_value_min_s1,ref_value_max_s1, no_steps)
             distance_vals = torch.abs(distance_vals/action_value[0] - 1)
             r_idx = torch.argmin(distance_vals)
             reward += reward_table[r_idx].item()
-            r_h0 += 1
+            r_h0 += reward_table[r_idx].item()
         else:
             distance_vals_min = torch.linspace(game.lower_limit, ref_value_min_s1, no_steps // 2)
             distance_vals_max = torch.linspace(ref_value_max_s1, game.upper_limit, no_steps // 2)
@@ -455,12 +401,12 @@ class Agent:
             distance_vals = torch.abs(distance_vals / action_value[0] - 1)
             p_idx = torch.argmin(distance_vals)
             additional_reward -= punishment_table[p_idx].item()
-        if ref_value_min_s2 < action_value[1] < ref_value_max_s2:
+        if ref_value_min_s2 < action_value[1].item() < ref_value_max_s2:
             distance_vals = torch.linspace(ref_value_min_s2, ref_value_max_s2, no_steps)
             distance_vals = torch.abs(distance_vals / action_value[1] - 1)
             r_idx = torch.argmin(distance_vals)
             reward += reward_table[r_idx].item()
-            r_h1 += 1
+            r_h1 += reward_table[r_idx].item()
         else:
             distance_vals_min = torch.linspace(game.lower_limit, ref_value_min_s2, no_steps // 2)
             distance_vals_max = torch.linspace(ref_value_max_s2, game.upper_limit, no_steps // 2)
@@ -468,12 +414,12 @@ class Agent:
             distance_vals = torch.abs(distance_vals / action_value[1] - 1)
             p_idx = torch.argmin(distance_vals)
             additional_reward -= punishment_table[p_idx].item()
-        if ref_value_min_s3 < action_value[2] < ref_value_max_s3:
+        if ref_value_min_s3 < action_value[2].item() < ref_value_max_s3:
             distance_vals = torch.linspace(ref_value_min_s3, ref_value_max_s3, no_steps)
             distance_vals = torch.abs(distance_vals / action_value[2] - 1)
             r_idx = torch.argmin(distance_vals)
             reward += reward_table[r_idx].item()
-            r_h2 += 1
+            r_h2 += reward_table[r_idx].item()
         else:
             distance_vals_min = torch.linspace(game.lower_limit, ref_value_min_s3, no_steps // 2)
             distance_vals_max = torch.linspace(ref_value_max_s3, game.upper_limit, no_steps // 2)

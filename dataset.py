@@ -70,29 +70,9 @@ class DataSet:
         self.women_area_per_bodyPart = torch.Tensor([3, 2, 6, 4, 1, 1, 4, 3, 4, 3]).to(device)
         self.men_area_per_bodyPart = torch.Tensor([4, 3, 8, 6, 1, 1, 6, 6, 12, 2]).to(device)
 
-    def create_target(self, std):
-        kj_total_var = torch.zeros((3,9, 3), requires_grad=True, device=self.device)
-        hz_var = torch.zeros((3,9, 3), requires_grad=True, device=self.device)
-        j_cm2_var = torch.zeros((3,9, 3), requires_grad=True, device=self.device)
-        std = std / 100
-        for j in range(0,3):
-            for i in range(len(self.kj_total)):
-                kj_total_var[j][i][0].data.copy_(torch.normal(self.kj_total[j][i][0][0].clone(), self.kj_total[j][i][0][0].detach()) * std)
-                kj_total_var[j][i][1].data.copy_(torch.normal(self.kj_total[j][i][1][0].clone(), self.kj_total[j][i][1][0].detach()) * std)
-                kj_total_var[j][i][2].data.copy_(torch.normal(self.kj_total[j][i][2][0].clone(), self.kj_total[j][i][2][0].detach()) * std)
-                hz_var[j][i][0].data.copy_(torch.normal(self.hz[j][i][0][0].clone(), self.hz[j][i][0][0].detach()) * std)
-                hz_var[j][i][1].data.copy_(torch.normal(self.hz[j][i][1][0].clone(), self.hz[j][i][1][0].detach()) * std)
-                hz_var[j][i][2].data.copy_(torch.normal(self.hz[j][i][2][0].clone(), self.hz[j][i][2][0].detach()) * std)
-
-                j_cm2_var[j][i][0].data.copy_(torch.normal(self.j_cm2[j][i][0][0].clone(), self.j_cm2[j][i][0][0].detach()) * std)
-                j_cm2_var[j][i][1].data.copy_(torch.normal(self.j_cm2[j][i][1][0].clone(), self.j_cm2[j][i][1][0].detach()) * std)
-                j_cm2_var[j][i][2].data.copy_(torch.normal(self.j_cm2[j][i][2][0].clone(), self.j_cm2[j][i][2][0].detach()) * std)
-
-        return kj_total_var, hz_var, j_cm2_var
-
     def create_input_set(self):
-        hair_type = np.random.randint(0, 3)
-        skin_type = np.random.randint(0, 5)
+        hair_type = np.random.randint(0, 2)
+        skin_type = np.random.randint(0, 4)
         body_type = np.random.randint(0, 3)
         # print('hair_type:',hair_type,'skin_type:',skin_type,'body_type:',body_type)
         hair_color = torch.Tensor(list(map(float, f'{hair_type:03b}'))).to(self.device)
