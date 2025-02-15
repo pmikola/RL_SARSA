@@ -121,7 +121,7 @@ class Agent:
 
     def train_long_memory(self, total_counter):
         k = 0
-        if total_counter % 2 == 0 and len(self.memory) > self.BATCH_SIZE:
+        if total_counter % 5 == 0 and len(self.memory) > self.BATCH_SIZE:
             # RANDOM REPLAY
             if k == 1:
                 print("RANDOM")
@@ -187,64 +187,65 @@ class Agent:
         Q_target = self.vF.Q_value(self.eps,self.actor,self.target_actor,self.critic_1, self.critic_2, self.target_critic_1, self.target_critic_2, s, a, r, s_next, a_next, done, tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
         #single_head_til = 5
-        Q_current_1 = self.critic_1(s.detach(), a, tid.detach())
-        Q_current_2 = self.critic_2(s.detach(), a, tid.detach())
-        self.optimizer_q_value_critic_1.zero_grad()
-        l_1 = 0
-        # if self.total_counter % single_head_til == 0:
-        #     chosen_action_Q = Q_current_1[self.i_s].gather(1, torch.argmax(a[self.i_s],dim=-1).unsqueeze(1))
+        # Q_current_1 = self.critic_1(s.detach(), a, tid.detach())
+        # Q_current_2 = self.critic_2(s.detach(), a, tid.detach())
+        # self.optimizer_q_value_critic_1.zero_grad()
+        # l_1 = 0
+        # # if self.total_counter % single_head_til == 0:
+        # #     chosen_action_Q = Q_current_1[self.i_s].gather(1, torch.argmax(a[self.i_s],dim=-1).unsqueeze(1))
+        # #     l_1 += self.loss_fn( chosen_action_Q,Q_target[self.i_s])
+        # # else:
+        # for i in range(0,3):
+        #     self.i_s = i
+        #     chosen_action_Q = Q_current_1[self.i_s]#.gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
         #     l_1 += self.loss_fn( chosen_action_Q,Q_target[self.i_s])
-        # else:
-        for i in range(0,3):
-            self.i_s = i
-            chosen_action_Q = Q_current_1[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
-            l_1 += self.loss_fn( chosen_action_Q,Q_target[self.i_s])
-        l_1.backward()
-        self.optimizer_q_value_critic_1.step()
-
-        self.optimizer_q_value_critic_2.zero_grad()
-        l_2 = 0.
-        # if self.total_counter % single_head_til == 0:
-        #     chosen_action_Q = Q_current_2[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
+        # l_1.backward()
+        # torch.nn.utils.clip_grad_norm_(self.critic_1.parameters(), max_norm=1, norm_type=2)
+        #
+        # self.optimizer_q_value_critic_1.step()
+        #
+        # self.optimizer_q_value_critic_2.zero_grad()
+        # l_2 = 0.
+        # # if self.total_counter % single_head_til == 0:
+        # #     chosen_action_Q = Q_current_2[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
+        # #     l_2 += self.loss_fn(chosen_action_Q,Q_target[self.i_s])
+        # # else:
+        # for i in range(0, 3):
+        #     self.i_s = i
+        #     chosen_action_Q = Q_current_2[self.i_s]#.gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
         #     l_2 += self.loss_fn(chosen_action_Q,Q_target[self.i_s])
-        # else:
-        for i in range(0, 3):
-            self.i_s = i
-            chosen_action_Q = Q_current_2[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
-            l_2 += self.loss_fn(chosen_action_Q,Q_target[self.i_s])
-        l_2.backward()
-        self.optimizer_q_value_critic_2.step()
+        # l_2.backward()
+        # torch.nn.utils.clip_grad_norm_(self.critic_2.parameters(), max_norm=1, norm_type=2)
+        # self.optimizer_q_value_critic_2.step()
 
         v_policy = self.actor(s.detach(), tid.detach())
-        Qvalue = self.critic_1(s.detach(), v_policy, tid)
+        #Qvalue = self.critic_1(s.detach(), v_policy, tid)
         self.optimizer_actor_policy_gradient.zero_grad()
         l_a = 0.
-        # if self.total_counter % single_head_til == 0:
-        #     chosen_action_log_prob = torch.log(v_policy[self.i_s].gather(1, torch.argmax(a[self.i_s],dim=-1).unsqueeze(1)) + 1e-8)
-        #     chosen_action_Q = Qvalue[self.i_s].gather(1, torch.argmax(a[self.i_s],dim=-1).unsqueeze(1))
-        #     l_a += -torch.mean(chosen_action_log_prob*chosen_action_Q) # Note: Maximising Q_value of the policy
-        # else:
         for i in range(0, 3):
             self.i_s = i
-            chosen_action_log_prob = torch.log(v_policy[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1)) + 1e-8)
-            chosen_action_Q = Qvalue[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
-            l_a += -torch.mean(chosen_action_log_prob*chosen_action_Q) # Note: Maximising Q_value of the policy
+            star = v_policy[self.i_s].argmax(dim=-1, keepdims=True)
+            #chosen_action_log_prob = torch.log(v_policy[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1)) + 1e-8)
+            #chosen_action_Q = Qvalue[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
+            # l_a += -torch.mean(torch.log(v_policy[self.i_s]+1e-8)*Qvalue[self.i_s]) # Note: Maximising Q_value of the policy
+            l_a += self.loss_fn(v_policy[self.i_s].gather(-1, star), Q_target[self.i_s])
         l_a.backward()
+        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=1, norm_type=2)
         self.optimizer_actor_policy_gradient.step()
 
-        td_errors = sum(torch.abs(Q_target[i] - Q_current_1[i]).detach() + torch.abs(Q_target[i] - Q_current_2[i]).detach()+ (1e-8 if i == 2 else 0) for i in range(3))
+        td_errors = sum(torch.abs(Q_target[i] - v_policy[i]).detach() + torch.abs(Q_target[i] - v_policy[i]).detach()+ (1e-8 if i == 2 else 0) for i in range(3))
         if td_errors.shape[0] == 1:
             td_errors = torch.mean(td_errors, dim=-1)
             experience = self.memory[-1]
             updated_experience = (*experience[:-1], td_errors)
             self.memory[-1] = updated_experience
-        self.vF.soft_update(self.critic_1, self.target_critic_1)
-        self.vF.soft_update(self.critic_2, self.target_critic_2)
+        #self.vF.soft_update(self.critic_1, self.target_critic_1)
+        #self.vF.soft_update(self.critic_2, self.target_critic_2)
         self.vF.soft_update(self.actor, self.target_actor)
         ###### COMPUTATIONAL GRAPH GENERATION ######
         # dot = make_dot(prediction, params=dict(self.net.named_parameters()))
         # dot.render(directory='doctest-output', view=True)
-        return l_1.item() +l_2.item()+ l_a.item(),tid
+        return  l_a.item(),tid#l_1.item() +l_2.item()+
 
     def take_action(self, s,task_id, step_counter, dataset, game):
         _, _, body_part = dataset.decode_input(s)

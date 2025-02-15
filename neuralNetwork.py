@@ -92,9 +92,9 @@ class ValueNetwork(nn.Module):
         ls1 = torch.cat(o_1, dim=0)
         ls2 = torch.cat(o_2, dim=0)
         ls3 = torch.cat(o_3, dim=0)
-        ls1 = torch.softmax(ls1,dim=-1)
-        ls2 = torch.softmax(ls2,dim=-1)
-        ls3 = torch.softmax(ls3,dim=-1)
+        # ls1 = torch.softmax(ls1,dim=-1)
+        # ls2 = torch.softmax(ls2,dim=-1)
+        # ls3 = torch.softmax(ls3,dim=-1)
 
 
         if raw_output and not self.training:

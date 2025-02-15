@@ -56,7 +56,7 @@ agent = Agent(actor,target_actor, critic_1, critic_2, target_critic_1,target_cri
 agent.BATCH_SIZE = 32
 
 game = Game(valueFunc, agent, device, no_of_rounds)
-game.game_cycles = 20
+game.game_cycles = 100
 game.games = no_of_games
 cmap = plt.cm.get_cmap('hsv', game.game_cycles + 5)
 r_data = []
