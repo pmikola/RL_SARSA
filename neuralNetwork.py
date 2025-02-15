@@ -40,18 +40,21 @@ class ValueNetwork(nn.Module):
         self.act = nn.LeakyReLU(0.2)
 
         self.linear1 = nn.Linear(self.input, self.hidden_size, bias=True)
-        self.linear2 = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
+        self.mul_gate = nn.Linear(64, self.hidden_size, bias=True)
+        self.shift_gate = nn.Linear(64, self.hidden_size, bias=True)
         self.head_groups = nn.ModuleDict({
             "id0": MultiHeadLayer(self.hidden_size,self.no_of_actions),
             "id1": MultiHeadLayer(self.hidden_size, self.no_of_actions),
             "id2": MultiHeadLayer(self.hidden_size, self.no_of_actions)
         })
         self.LNorm1 = nn.LayerNorm(self.hidden_size)
-        self.LNorm2 = nn.LayerNorm(self.hidden_size)
+        self.LNorm_mul = nn.LayerNorm(self.hidden_size)
+        self.LNorm_shift = nn.LayerNorm(self.hidden_size)
+
+        self.task_indicator = nn.Embedding(3, 64)
         self.apply(self._init_weights)
         #task_indicator_vectors = self.generate_orthogonal_vectors(3, 64)
         #self.task_indicator = nn.Parameter(task_indicator_vectors,requires_grad=True)
-        self.task_indicator = nn.Embedding(3, 64)
 
         self.limits = nn.Parameter(torch.tensor([0.,30.,0.,15.,0.,28.]),requires_grad=False)
         self.idx_to_str = {
@@ -59,7 +62,6 @@ class ValueNetwork(nn.Module):
             1: "id1",
             2: "id2"
         }
-
     def forward(self, state, t_id,raw_output=False):
         if isinstance(t_id, int):
             t_id = torch.tensor([t_id]).to(self.device)
@@ -73,11 +75,12 @@ class ValueNetwork(nn.Module):
 
         context = torch.cat([state], dim=1)
         x = self.act(self.linear1(context))
-        x = self.LNorm1(x)
-        #x = torch.cat([x,task_id], dim=1)
-        x = self.act(self.linear2(x))
-        x = self.LNorm2(x)
-
+        #x = self.LNorm1(x)
+        # mul = self.act(self.mul_gate(task_embedded_id))
+        # mul = self.LNorm_mul(mul)
+        # shift = self.act(self.shift_gate(task_embedded_id))
+        # shift =self.LNorm_shift(shift)
+        # x = x*mul + shift
         index_tensor = t_id.cpu()
         index_array = index_tensor[0].tolist()
         is_int = isinstance( index_array, int)

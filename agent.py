@@ -65,7 +65,7 @@ class Agent:
                                                            )
 
         self.optimizer_actor_policy_gradient = torch.optim.Adam(self.actor.parameters(),
-                                                                lr=1e-4,
+                                                                lr=1e-3,
                                                                 betas=(0.9, 0.999),
                                                                 eps=1e-08,
                                                                 weight_decay=1e-6,
@@ -128,7 +128,7 @@ class Agent:
             mini_sample = random.choices(self.memory, k=self.BATCH_SIZE)  # list of tuples
             s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, ad_reward, priorities = zip(*mini_sample)
             l,tid = self.train_step(s, a1,a2,a3, r, s_next, a_next1,a_next2,a_next3, d, tid, ad_reward)
-        # elif total_counter % 3 == 0 and len(self.memory) > self.BATCH_SIZE:
+        # elif total_counter % 15 == 0 and len(self.memory) > self.BATCH_SIZE:
         #     # PRIORITY HIGH LOSS EXPERIENCE REPLAY
         #     if k == 1:
         #         print("PRIORITY")
@@ -187,19 +187,16 @@ class Agent:
         Q_target = self.vF.Q_value(self.eps,self.actor,self.target_actor,self.critic_1, self.critic_2, self.target_critic_1, self.target_critic_2, s, a, r, s_next, a_next, done, tid, ad_reward)
         # state_a = self.net.state_dict().__str__()
         #single_head_til = 5
-        # Q_current_1 = self.critic_1(s.detach(), a, tid.detach())
+        Q_current_1 = self.critic_1(s.detach(), a, tid.detach())
         # Q_current_2 = self.critic_2(s.detach(), a, tid.detach())
         # self.optimizer_q_value_critic_1.zero_grad()
-        # l_1 = 0
-        # # if self.total_counter % single_head_til == 0:
-        # #     chosen_action_Q = Q_current_1[self.i_s].gather(1, torch.argmax(a[self.i_s],dim=-1).unsqueeze(1))
-        # #     l_1 += self.loss_fn( chosen_action_Q,Q_target[self.i_s])
-        # # else:
-        # for i in range(0,3):
-        #     self.i_s = i
-        #     chosen_action_Q = Q_current_1[self.i_s]#.gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
-        #     l_1 += self.loss_fn( chosen_action_Q,Q_target[self.i_s])
-        # l_1.backward()
+        l_1 = 0
+        for i in range(0,3):
+            self.i_s = i
+            star = Q_current_1[self.i_s].argmax(dim=-1, keepdims=True)
+            chosen_action_Q = Q_current_1[self.i_s].gather(-1, star)#.gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
+            l_1 += self.loss_fn(chosen_action_Q,Q_target[self.i_s])
+        l_1.backward()
         # torch.nn.utils.clip_grad_norm_(self.critic_1.parameters(), max_norm=1, norm_type=2)
         #
         # self.optimizer_q_value_critic_1.step()
@@ -224,22 +221,25 @@ class Agent:
         l_a = 0.
         for i in range(0, 3):
             self.i_s = i
-            star = v_policy[self.i_s].argmax(dim=-1, keepdims=True)
+            star_p = v_policy[self.i_s].argmax(dim=-1, keepdims=True)
+            star = Q_current_1[self.i_s].argmax(dim=-1, keepdims=True).detach()
+            chosen_action_Q = Q_current_1[self.i_s].gather(-1, star).detach()
             #chosen_action_log_prob = torch.log(v_policy[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1)) + 1e-8)
             #chosen_action_Q = Qvalue[self.i_s].gather(1, torch.argmax(a[self.i_s], dim=-1).unsqueeze(1))
             # l_a += -torch.mean(torch.log(v_policy[self.i_s]+1e-8)*Qvalue[self.i_s]) # Note: Maximising Q_value of the policy
-            l_a += self.loss_fn(v_policy[self.i_s].gather(-1, star), Q_target[self.i_s])
+            l_a += self.loss_fn(v_policy[self.i_s].gather(-1, star_p), Q_target[self.i_s]-chosen_action_Q)
         l_a.backward()
-        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=1, norm_type=2)
+        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=5, norm_type=2)
         self.optimizer_actor_policy_gradient.step()
 
-        td_errors = sum(torch.abs(Q_target[i] - v_policy[i]).detach() + torch.abs(Q_target[i] - v_policy[i]).detach()+ (1e-8 if i == 2 else 0) for i in range(3))
+        td_errors = 0.
+        for i in range(3):
+            td_errors +=  torch.mean(torch.abs(Q_target[i] - v_policy[i]).detach(),dim=-1)
         if td_errors.shape[0] == 1:
-            td_errors = torch.mean(td_errors, dim=-1)
             experience = self.memory[-1]
             updated_experience = (*experience[:-1], td_errors)
             self.memory[-1] = updated_experience
-        #self.vF.soft_update(self.critic_1, self.target_critic_1)
+        self.vF.soft_update(self.critic_1, self.target_critic_1)
         #self.vF.soft_update(self.critic_2, self.target_critic_2)
         self.vF.soft_update(self.actor, self.target_actor)
         ###### COMPUTATIONAL GRAPH GENERATION ######

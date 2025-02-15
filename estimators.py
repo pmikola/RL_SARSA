@@ -35,9 +35,11 @@ class Estimators:
                 else:
                     a_n_1.append(Qt_next_a[i].detach())
                     a_n_2.append(Qt_next_a[i].detach() + Qt_next_a[i].detach() * a_next_noise)
+            Qo_next_c = critic_1(s_next.detach(),a_n_1, task_indicator.detach())
+            Qt_next_c = target_critic_1(s_next.detach(), a_n_1, task_indicator.detach())
+
             #q1n = critic_1(s_next.detach(), a_n_1, task_indicator.detach())
             # q2n = critic_2(s_next.detach(), a_n_2, task_indicator.detach())
-            #Q_next_1 = target_critic_1(s_next.detach(), a_n_1, task_indicator.detach())
             #Q_next_2 = target_critic_2(s_next.detach(), a_n_2, task_indicator.detach())
             # ref = torch.zeros_like(Q_next_a[0]).to(self.device)
             ref = torch.zeros_like(r.unsqueeze(-1)).to(self.device)
@@ -46,14 +48,15 @@ class Estimators:
             idx_select = random.randint(0, 1)
             for i in range(3):
                 a_star = Qo_next_a[i].argmax(dim=-1, keepdims=True)
-               # b_star = Q_next_2[i].argmax(dim=-1,keepdims=True)
-                Q_next_1_target = Qt_next_a[i].gather(-1, a_star)
+                Qn_at = Qt_next_a[i].gather(-1, a_star)
+                c_star = Qo_next_c[i].argmax(dim=-1, keepdims=True)
+                Qn_c1 = Qt_next_c[i].gather(-1, c_star)
                 #Q_next_2_target = q2n[i]#.gather(-1, a_star)
                 #Q_t_update = Q_next_1_target.clone()+Q_next_2_target.clone()
                 #index_star = [ b_star,a_star][idx_select]
                 #print(Q_new[i].shape,r.unsqueeze(-1).shape , ad_reward.unsqueeze(-1).shape , done.shape, Q_next_target_updated.shape)
                 #q_target_up_a = self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + ((1 - done) * self.gamma * Q_next_1_target.clone()))
-                q_target_up = self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + ((1 - done) * self.gamma *Q_next_1_target))
+                q_target_up = self.alpha * ((r.unsqueeze(-1) + ad_reward.unsqueeze(-1)) + ((1 - done) * self.gamma *(Qn_at+Qn_c1)))
                 #Q_target[i].scatter_(1, index_star, q_target_up)
                 Q_target[i] = q_target_up
         return Q_target

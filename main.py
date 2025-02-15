@@ -24,8 +24,8 @@ num_m_bits = 10
 no_of_states = 14  # + num_e_bits + num_m_bits
 alpha = 1.
 epsilon = 1e-2
-gamma = 0.99
-tau = 0.001
+gamma = 0.5
+tau = 0.0005
 no_of_games = 50
 no_of_rounds = 9
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -99,7 +99,7 @@ for i in range(1, game.game_cycles + 1):
     game.total_counter = 0
     game.agent.vF.epsilon +=1e-2#(1/(game.game_cycles*2))
     game.task_id = random.randint(0,2)
-    # if game.cycle % 3 == 0:
+    # if game.cycle % 5 == 0:
     #     game.task_id = int(argmin(r))
 
     # Note: test  network with learning on
@@ -158,7 +158,7 @@ az = plt.figure().gca()
 rewars_total = np.array(sum(r_data, [])) / no_of_rounds
 az.plot(rewars_total)
 
-plt.xlabel("No. Games")
+plt.xlabel("No. Steps")
 plt.ylabel("Rewards")
 plt.grid()
 plt.show()
@@ -189,7 +189,7 @@ b = plt.figure().gca()
 loss_total = np.array(sum(loss, []))
 b.plot(loss_total)
 
-plt.xlabel("No. Games")
+plt.xlabel("No. Steps")
 plt.ylabel("loss")
 plt.grid()
 plt.show()
