@@ -51,6 +51,8 @@ class ValueNetwork(nn.Module):
         self.apply(self._init_weights)
         #task_indicator_vectors = self.generate_orthogonal_vectors(3, 64)
         #self.task_indicator = nn.Parameter(task_indicator_vectors,requires_grad=True)
+        self.task_indicator = nn.Embedding(3, 64)
+
         self.limits = nn.Parameter(torch.tensor([0.,30.,0.,15.,0.,28.]),requires_grad=False)
         self.idx_to_str = {
             0: "id0",
@@ -62,10 +64,15 @@ class ValueNetwork(nn.Module):
         if isinstance(t_id, int):
             t_id = torch.tensor([t_id]).to(self.device)
         t_id = t_id.long() if isinstance(t_id, torch.Tensor) else torch.tensor(t_id, dtype=torch.long)
-
         if state.dim() < 2:
             state = torch.unsqueeze(state, dim=0)
-        x = self.act(self.linear1(state))
+
+        task_embedded_id = self.task_indicator(t_id).squeeze(0)
+        if task_embedded_id.shape[0] == 64:
+            task_embedded_id = task_embedded_id.unsqueeze(0)
+
+        context = torch.cat([state], dim=1)
+        x = self.act(self.linear1(context))
         x = self.LNorm1(x)
         #x = torch.cat([x,task_id], dim=1)
         x = self.act(self.linear2(x))
